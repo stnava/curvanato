@@ -25,3 +25,9 @@ print(curvature)
 ```
 
 
+## Example data
+
+[here](https://openneuro.org/datasets/ds004560/versions/1.0.1) repeated T1w acquisitions on same subjects but with different parameters
+
+
+
