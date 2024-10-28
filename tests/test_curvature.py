@@ -29,3 +29,19 @@ def test_compute_curvature(radius, smoo=1.0 ):
     # assert result.shape == seg_image.shape
     # assert np.all(result == 0)
 
+
+def test_gauss_bump_curvature(
+    dim = (100, 100, 100),
+    centers = [(50, 50, 50), (70, 70, 30), (30, 30, 70)],
+    sigma = 10,
+    smoo=1.0 ):
+    spherical_volume = curvanato.create_gaussian_bump_volume(dim, centers, sigma)
+    spherical_volume_s = ants.add_noise_to_image( spherical_volume, 'additivegaussian', [0,0.001] )
+    spherical_volume_s = ants.smooth_image(spherical_volume_s, 1.0,sigma_in_physical_coordinates=True) 
+    kvol = ants.weingarten_image_curvature( spherical_volume_s, smoo )
+    return spherical_volume_s, kvol * ants.threshold_image( spherical_volume, 0.05, 1.e9) 
+
+
+a, b = test_gauss_bump_curvature( )
+ants.image_write( a, '/tmp/a.nii.gz' )
+ants.image_write( b, '/tmp/ak.nii.gz' )
