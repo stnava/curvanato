@@ -21,6 +21,7 @@ classifiers = [
 dependencies = [
     "numpy",
     "antspyx>=0.4.2",
+    "antspyt1w>=0.9.4",
     "scikit-learn",
     "requests",
     "statsmodels",
@@ -32,3 +33,11 @@ homepage = "https://github.com/stnava/curvanato"
 
 [tool.setuptools.packages]
 find = { include = ["curvanato","curvanato.*"] }
+
+
+[tool.setuptools]
+include-package-data = true  # Ensures package data is included
+
+[tool.setuptools.package-data]
+"curvanato" = ["data/*"]
+

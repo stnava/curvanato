@@ -50,6 +50,22 @@ def create_spherical_volume(dim, radius, center):
     volume = ants.from_numpy(volume_data)
     return volume
 
+import pkg_resources
+import antspyt1w
+
+def load_labeled_caudate(  label=[1,2], subdivide = 0, verbose=False ):
+    # Get the path to the data file in the installed package
+    nifti_path = pkg_resources.resource_filename(
+        "curvanato", "data/labeled_caudate.nii.gz"
+    )
+    # Load the NIfTI file
+    seg = ants.image_read(nifti_path)
+    seg = ants.mask_image( seg, seg, label, binarize=True )
+    for x in range( subdivide ):
+        seg = antspyt1w.subdivide_labels( seg )
+    if verbose:
+        print("MaxDiv: " + str( seg.max() ) )
+    return seg
 
 def create_sine_wave_volume(dim, amplitude, frequency):
     """
