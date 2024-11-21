@@ -312,7 +312,7 @@ def label_transfer(target_binary, prior_binary, prior_label, propagate=True ):
     return labeled
 
 
-def t1w_caudcurv(t1, segmentation, target_label=9, prior_labels=[1, 2], prior_target_label=2, subdivide=0, grid=0, propagate=True, verbose=False):
+def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_labels=[1, 2], prior_target_label=2,  subdivide=0, grid=0, propagate=True, verbose=False):
     """
     Perform caudate curvature mapping on a T1-weighted MRI image using prior labels for anatomical guidance.
 
@@ -328,6 +328,8 @@ def t1w_caudcurv(t1, segmentation, target_label=9, prior_labels=[1, 2], prior_ta
         The segmentation associated with the T1
     target_label : int, optional
         The target label to isolate and process in the atlas segmentation. Default is 9.
+    ventricle_label : int or None, optional
+        The target label that defines the ventricles. Default is 9.
     prior_labels : list of int, optional
         Labels from the prior segmentation that correspond to the caudate. Default is [1, 2].
     prior_target_label : int, optional
@@ -385,6 +387,9 @@ def t1w_caudcurv(t1, segmentation, target_label=9, prior_labels=[1, 2], prior_ta
     curvit = compute_curvature( binaryimage, noise=[0, 0.0001] )
     mydf = make_label_dataframe( labeled )
     curvitr = ants.resample_image_to_target( curvit, labeled, interp_type='linear' )
+    if ventricle_label is not None:
+        ventgrow = ants.threshold_image( segmentation, ventricle_label, ventricle_label ).iMath("MD",1)
+        labeled = labeled * ventgrow
     descriptor = antspyt1w.map_intensity_to_dataframe( mydf, curvitr, labeled )
     return curvitr, labeled, descriptor
 
