@@ -2,6 +2,8 @@
 # curvature.py
 import numpy as np
 import ants
+import antspynet
+import antspyt1w
 
 def find_minimum(values):
     """
@@ -53,18 +55,54 @@ def create_spherical_volume(dim, radius, center):
 import pkg_resources
 import antspyt1w
 
-def load_labeled_caudate(  label=[1,2], subdivide = 0, verbose=False ):
+def load_labeled_caudate(label=[1, 2], subdivide=0, verbose=False):
+    """
+    Load a labeled NIfTI image of the caudate, mask it to specified labels, and optionally subdivide the labels.
+
+    This function retrieves a pre-defined NIfTI file of the labeled caudate from the package data, 
+    masks it to retain only the specified labels, and optionally subdivides these labels using the 
+    `subdivide_labels` function from `antspyt1w`. The maximum number of labels is printed if `verbose` is set to `True`.
+
+    Parameters:
+    ----------
+    label : list of int, optional
+        A list of integer labels to retain in the mask. Default is [1, 2].
+    subdivide : int, optional
+        Number of times to subdivide the labels for finer segmentation. Default is 0.
+    verbose : bool, optional
+        If `True`, prints the maximum label value after processing. Default is `False`.
+
+    Returns:
+    -------
+    ants.ANTsImage
+        A masked and optionally subdivided ANTsImage containing the labeled caudate.
+
+    Examples:
+    --------
+    >>> from curvanato import load_labeled_caudate
+    >>> seg_image = load_labeled_caudate(label=[1], subdivide=2, verbose=True)
+    MaxDiv: 5
+    >>> print(seg_image)
+    ANTsImage (type: float)
+
+    Notes:
+    -----
+    - The function assumes that the labeled caudate NIfTI file (`labeled_caudate.nii.gz`) 
+      is present in the `data` directory of the `curvanato` package.
+    - Requires the `pkg_resources`, `ants`, and `antspyt1w` packages.
+
+    """
     # Get the path to the data file in the installed package
     nifti_path = pkg_resources.resource_filename(
         "curvanato", "data/labeled_caudate.nii.gz"
     )
     # Load the NIfTI file
     seg = ants.image_read(nifti_path)
-    seg = ants.mask_image( seg, seg, label, binarize=True )
-    for x in range( subdivide ):
-        seg = antspyt1w.subdivide_labels( seg )
+    seg = ants.mask_image(seg, seg, label, binarize=True)
+    for x in range(subdivide):
+        seg = antspyt1w.subdivide_labels(seg)
     if verbose:
-        print("MaxDiv: " + str( seg.max() ) )
+        print("MaxDiv: " + str(seg.max()))
     return seg
 
 def create_sine_wave_volume(dim, amplitude, frequency):
@@ -175,4 +213,128 @@ def compute_curvature(segmentation_image, smoothing=1.2, noise=[0, 0.01]):
     kimage = ants.weingarten_image_curvature(spherical_volume_s, smoothing)
     
     return kimage
+
+
+
+def label_transfer(target_binary, prior_binary, prior_label):
+    """
+    Perform label transfer from a prior image to a target image using deformable image registration.
+
+    This function aligns a prior binary image to a target binary image using SyN registration (non-linear transformation) 
+    and propagates the labels from the prior to the target. The transferred labels are post-processed to ensure 
+    continuity using the 'PropagateLabelsThroughMask' operation from ANTs.
+
+    Parameters:
+    ----------
+    target_binary : ants.ANTsImage
+        A binary ANTsImage representing the target image.
+    prior_binary : ants.ANTsImage
+        A binary ANTsImage representing the prior image.
+    prior_label : ants.ANTsImage
+        A labeled ANTsImage representing the labels in the prior image.
+
+    Returns:
+    -------
+    ants.ANTsImage
+        A labeled ANTsImage with the transferred labels mapped onto the target image.
+
+    Examples:
+    --------
+    >>> import ants
+    >>> from mypackage import label_transfer
+    >>> target = ants.image_read("target_binary.nii.gz")
+    >>> prior = ants.image_read("prior_binary.nii.gz")
+    >>> prior_label = ants.image_read("prior_label.nii.gz")
+    >>> result = label_transfer(target, prior, prior_label)
+    >>> print(result)
+    ANTsImage (type: integer)
+
+    Notes:
+    -----
+    - The function uses SyN registration from ANTs to align images, which is computationally intensive.
+    - Assumes that `target_binary` and `prior_binary` are binary masks, and `prior_label` is an integer-labeled image.
+    - Requires the `ants` Python package for image processing.
+
+    See Also:
+    --------
+    - `ants.registration`: For registration methods in ANTsPy.
+    - `ants.apply_transforms`: To apply transformations to an image.
+    - `ants.iMath`: For image-based mathematical operations.
+    """
+    target_binary_c = ants.crop_image( target_binary, ants.iMath( target_binary, "MD", 4 ) )
+    reg = ants.registration(target_binary_c, prior_binary, 'SyNCC')
+    labeled = ants.apply_transforms(target_binary_c, prior_label, reg['fwdtransforms'], 
+        interpolator='nearestNeighbor' )
+    # labeled = ants.iMath(labeled, 'PropagateLabelsThroughMask', labeled, 1, 0)
+    return labeled
+
+
+def t1w_caudcurv(t1, segmentation, target_label=9, prior_labels=[1, 2], prior_target_label=2, subdivide=0, verbose=False):
+    """
+    Perform caudate curvature mapping on a T1-weighted MRI image using prior labels for anatomical guidance.
+
+    This function utilizes the Harvard-Oxford Atlas for initial labeling, processes specific target labels, 
+    and transfers prior anatomical labels to compute curvature-related features of the caudate. The process 
+    involves binary masking, curvature estimation, and label transfer using predefined or subdivided priors.
+
+    Parameters:
+    ----------
+    t1 : ants.ANTsImage
+        The T1-weighted MRI image to process.
+    segmentation : ants.ANTsImage
+        The segmentation associated with the T1
+    target_label : int, optional
+        The target label to isolate and process in the atlas segmentation. Default is 9.
+    prior_labels : list of int, optional
+        Labels from the prior segmentation that correspond to the caudate. Default is [1, 2].
+    prior_target_label : int, optional
+        The specific target label from the prior segmentation to transfer. Default is 2.
+    subdivide : int, optional
+        Number of subdivisions to apply to the prior target labels. Default is 0.
+    verbose : boolean
+
+    Returns:
+    -------
+    ants.ANTsImage
+        A labeled ANTsImage with curvature-adjusted labels mapped to the target.
+
+    Examples:
+    --------
+    >>> import ants
+    >>> from mypackage import t1w_caudcurv
+    >>> t1_image = ants.image_read("subject_t1.nii.gz")
+    >>> result = t1w_caudcurv(t1_image, target_label=9, prior_labels=[1, 2], subdivide=2)
+    >>> print(result)
+    ANTsImage (type: integer)
+
+    Notes:
+    -----
+    - Requires `antspynet` for Harvard-Oxford atlas labeling and `ants` for image processing.
+    - The function assumes the Harvard-Oxford atlas segmentation provides an appropriate 
+      reference for caudate localization.
+    - Prior caudate labels are loaded using the `load_labeled_caudate` function, and label 
+      transfer is handled by the `label_transfer` function.
+
+    See Also:
+    --------
+    - `antspynet.harvard_oxford_atlas_labeling`: Atlas-based segmentation function.
+    - `load_labeled_caudate`: Loads labeled caudate images for prior segmentation.
+    - `label_transfer`: Transfers labels between binary images.
+
+    """
+    # Target labels and prior labels correspond to left and right sides
+    labeled = segmentation * 0.0
+    curved = segmentation * 0.0
+    binaryimage = ants.threshold_image(segmentation, target_label, target_label).iMath("FillHoles").iMath("GetLargestComponent")
+    # FIXME compute curvature on the binary image
+    caud0 = load_labeled_caudate(label=prior_labels, subdivide=0)
+    if isinstance(my_object, list):
+        caudsd = load_labeled_caudate(label=prior_target_label, subdivide=subdivide)
+    else:
+        caudsd = load_labeled_caudate(label=[prior_target_label], subdivide=subdivide)
+    if verbose:
+        print('max caudsd '+ str( caudsd.max() ) )
+    prior_binary = ants.mask_image(caud0, caud0, prior_labels, binarize=True)
+    labeled = label_transfer( binaryimage, prior_binary, caudsd )
+    return labeled
 

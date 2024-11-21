@@ -6,3 +6,6 @@ from .curvature import load_labeled_caudate
 from .curvature import create_spherical_volume
 from .curvature import create_sine_wave_volume
 from .curvature import create_gaussian_bump_volume
+from .curvature import label_transfer
+from .curvature import t1w_caudcurv
+
