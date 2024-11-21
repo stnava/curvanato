@@ -4,6 +4,34 @@ import numpy as np
 import ants
 import antspynet
 import antspyt1w
+import pandas as pd
+
+
+import pandas as pd
+
+def make_label_dataframe(label_image):
+    """
+    Generate a pandas DataFrame with unique label values (excluding 0) from a label image and their descriptions.
+
+    Parameters:
+    ----------
+    label_image : ants.ANTsImage
+        The input label image containing integer labels.
+
+    Returns:
+    -------
+    pd.DataFrame
+        A DataFrame with two columns: 'Label' and 'Description'. Each row corresponds to a unique label, excluding 0.
+    """
+    # Extract unique label values from the image and convert to integers
+    unique_labels = list(set(label_image.numpy().flatten()))
+    unique_labels = [int(label) for label in unique_labels if label != 0]
+    df = pd.DataFrame({
+        'Label': unique_labels,
+        'Description': ["Label" + str(label) for label in unique_labels]
+    })
+    return df
+
 
 def find_minimum(values):
     """
@@ -223,7 +251,7 @@ def compute_curvature(segmentation_image, smoothing=1.2, noise=[0, 0.01]):
     spherical_volume_s = ants.smooth_image(segmentation_image_nz, minspc, sigma_in_physical_coordinates=True) 
     
     # Calculate the curvature image
-    kimage = ants.weingarten_image_curvature(spherical_volume_s, smoothing)
+    kimage = ants.weingarten_image_curvature( spherical_volume_s * segmentation_image, smoothing)
     
     return kimage
 
@@ -354,5 +382,9 @@ def t1w_caudcurv(t1, segmentation, target_label=9, prior_labels=[1, 2], prior_ta
         print('max caudsd '+ str( caudsd.max() ) )
     prior_binary = ants.mask_image(caud0, caud0, prior_labels, binarize=True)
     labeled = label_transfer( binaryimage, prior_binary, caudsd, propagate=propagate )
-    return labeled
+    curvit = compute_curvature( binaryimage, noise=[0, 0.0001] )
+    mydf = make_label_dataframe( labeled )
+    curvitr = ants.resample_image_to_target( curvit, labeled, interp_type='linear' )
+    descriptor = antspyt1w.map_intensity_to_dataframe( mydf, curvitr, labeled )
+    return curvitr, labeled, descriptor
 
