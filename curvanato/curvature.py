@@ -216,7 +216,7 @@ def compute_curvature(segmentation_image, smoothing=1.2, noise=[0, 0.01]):
 
 
 
-def label_transfer(target_binary, prior_binary, prior_label):
+def label_transfer(target_binary, prior_binary, prior_label, propagate=True ):
     """
     Perform label transfer from a prior image to a target image using deformable image registration.
 
@@ -232,6 +232,7 @@ def label_transfer(target_binary, prior_binary, prior_label):
         A binary ANTsImage representing the prior image.
     prior_label : ants.ANTsImage
         A labeled ANTsImage representing the labels in the prior image.
+    propagate: boolean
 
     Returns:
     -------
@@ -265,7 +266,8 @@ def label_transfer(target_binary, prior_binary, prior_label):
     reg = ants.registration(target_binary_c, prior_binary, 'SyNCC')
     labeled = ants.apply_transforms(target_binary_c, prior_label, reg['fwdtransforms'], 
         interpolator='nearestNeighbor' )
-    # labeled = ants.iMath(labeled, 'PropagateLabelsThroughMask', labeled, 1, 0)
+    if propagate:
+        labeled = ants.iMath(labeled, 'PropagateLabelsThroughMask', labeled, 1, 0)
     return labeled
 
 
@@ -328,7 +330,7 @@ def t1w_caudcurv(t1, segmentation, target_label=9, prior_labels=[1, 2], prior_ta
     binaryimage = ants.threshold_image(segmentation, target_label, target_label).iMath("FillHoles").iMath("GetLargestComponent")
     # FIXME compute curvature on the binary image
     caud0 = load_labeled_caudate(label=prior_labels, subdivide=0)
-    if isinstance(my_object, list):
+    if isinstance(prior_target_label, list):
         caudsd = load_labeled_caudate(label=prior_target_label, subdivide=subdivide)
     else:
         caudsd = load_labeled_caudate(label=[prior_target_label], subdivide=subdivide)
