@@ -312,7 +312,7 @@ def label_transfer(target_binary, prior_binary, prior_label, propagate=True ):
     return labeled
 
 
-def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_labels=[1, 2], prior_target_label=2,  subdivide=0, grid=0, propagate=True, verbose=False):
+def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_labels=[1, 2], prior_target_label=2,  subdivide=0, grid=0, smoothing=None, propagate=True, verbose=False):
     """
     Perform caudate curvature mapping on a T1-weighted MRI image using prior labels for anatomical guidance.
 
@@ -338,6 +338,9 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
         Number of subdivisions to apply to the prior target labels. Default is 0.
     grid : int, optional
         Number of grid divisions to apply to the prior target labels. Default is 0.
+    smoothing : float, optional
+        Smoothing factor applied to the curvature calculation, where higher values 
+        increase smoothness (default is the magnitude of the resolution of the image).
     propagate : boolean
     verbose : boolean
 
@@ -376,19 +379,36 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
     binaryimage = ants.threshold_image(segmentation, target_label, target_label).iMath("FillHoles").iMath("GetLargestComponent")
     # FIXME compute curvature on the binary image
     caud0 = load_labeled_caudate(label=prior_labels, subdivide=0)
+    if verbose:
+        print("caud0 max " + str( caud0.max() ) )
     if isinstance(prior_target_label, list):
         caudsd = load_labeled_caudate(label=prior_target_label, subdivide=subdivide, grid=grid )
     else:
         caudsd = load_labeled_caudate(label=[prior_target_label], subdivide=subdivide, grid=grid )
     if verbose:
         print('max caudsd '+ str( caudsd.max() ) )
-    prior_binary = ants.mask_image(caud0, caud0, prior_labels, binarize=True)
+        print( prior_labels )
+    prior_binary = caud0.clone() # ants.mask_image(caud0, caud0, prior_labels, binarize=True)
+    if verbose:
+        print('max prior_binary '+ str( prior_binary.max() ) )
+        print( prior_labels )
+#    ants.plot( binaryimage, axis=2, crop=True  )
+#    ants.plot( prior_binary, axis=2, crop=True  )
+#    ants.plot( prior_binary, caudsd, axis=2, crop=True )
     labeled = label_transfer( binaryimage, prior_binary, caudsd, propagate=propagate )
-    curvit = compute_curvature( binaryimage, noise=[0, 0.0001] )
+    import numpy as np
+    if smoothing is None:
+        spmag=0.0
+        spc=ants.get_spacing(segmentation)
+        for k in range(segmentation.dimension):
+            spmag=spmag+spc[k]*spc[k]
+        smoothing=np.sqrt( spmag )
+    curvit = compute_curvature( binaryimage, smoothing=smoothing, noise=[0, 0.0001] )
     mydf = make_label_dataframe( labeled )
     curvitr = ants.resample_image_to_target( curvit, labeled, interp_type='linear' )
     if ventricle_label is not None:
         ventgrow = ants.threshold_image( segmentation, ventricle_label, ventricle_label ).iMath("MD",1)
+        ventgrow = ants.resample_image_to_target( ventgrow, labeled, interp_type='nearestNeighbor' )
         labeled = labeled * ventgrow
     descriptor = antspyt1w.map_intensity_to_dataframe( mydf, curvitr, labeled )
     return curvitr, labeled, descriptor
