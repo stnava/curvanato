@@ -55,7 +55,7 @@ def create_spherical_volume(dim, radius, center):
 import pkg_resources
 import antspyt1w
 
-def load_labeled_caudate(label=[1, 2], subdivide=0, verbose=False):
+def load_labeled_caudate(label=[1, 2], subdivide=0, grid=0, verbose=False):
     """
     Load a labeled NIfTI image of the caudate, mask it to specified labels, and optionally subdivide the labels.
 
@@ -69,6 +69,8 @@ def load_labeled_caudate(label=[1, 2], subdivide=0, verbose=False):
         A list of integer labels to retain in the mask. Default is [1, 2].
     subdivide : int, optional
         Number of times to subdivide the labels for finer segmentation. Default is 0.
+    grid : int, optional
+        Grid size with which to subdivide the labels for finer segmentation. Default is 0.
     verbose : bool, optional
         If `True`, prints the maximum label value after processing. Default is `False`.
 
@@ -99,10 +101,21 @@ def load_labeled_caudate(label=[1, 2], subdivide=0, verbose=False):
     # Load the NIfTI file
     seg = ants.image_read(nifti_path)
     seg = ants.mask_image(seg, seg, label, binarize=True)
-    for x in range(subdivide):
-        seg = antspyt1w.subdivide_labels(seg)
+    if subdivide > 0:
+        for x in range(subdivide):
+            seg = antspyt1w.subdivide_labels(seg)
+    elif grid > 0:
+        gridder = tuple( [True] * seg.dimension )
+        gg=ants.create_warped_grid( seg*0, grid_step=grid, grid_width=1, grid_directions=gridder )
+        gg = gg * seg
+        gg = ants.label_clusters( gg, 1 )
+        if verbose:
+            print("begin prop " + str( gg.max() )) 
+        seg = ants.iMath(seg, 'PropagateLabelsThroughMask', gg, 1, 0)
+        if verbose:
+            print("end prop ") 
     if verbose:
-        print("MaxDiv: " + str(seg.max()))
+        print("seg MaxDiv: " + str(seg.max()))
     return seg
 
 def create_sine_wave_volume(dim, amplitude, frequency):
@@ -267,11 +280,11 @@ def label_transfer(target_binary, prior_binary, prior_label, propagate=True ):
     labeled = ants.apply_transforms(target_binary_c, prior_label, reg['fwdtransforms'], 
         interpolator='nearestNeighbor' )
     if propagate:
-        labeled = ants.iMath(labeled, 'PropagateLabelsThroughMask', labeled, 1, 0)
+        labeled = ants.iMath(target_binary_c, 'PropagateLabelsThroughMask', labeled, 1, 0)
     return labeled
 
 
-def t1w_caudcurv(t1, segmentation, target_label=9, prior_labels=[1, 2], prior_target_label=2, subdivide=0, verbose=False):
+def t1w_caudcurv(t1, segmentation, target_label=9, prior_labels=[1, 2], prior_target_label=2, subdivide=0, grid=0, propagate=True, verbose=False):
     """
     Perform caudate curvature mapping on a T1-weighted MRI image using prior labels for anatomical guidance.
 
@@ -293,6 +306,9 @@ def t1w_caudcurv(t1, segmentation, target_label=9, prior_labels=[1, 2], prior_ta
         The specific target label from the prior segmentation to transfer. Default is 2.
     subdivide : int, optional
         Number of subdivisions to apply to the prior target labels. Default is 0.
+    grid : int, optional
+        Number of grid divisions to apply to the prior target labels. Default is 0.
+    propagate : boolean
     verbose : boolean
 
     Returns:
@@ -331,12 +347,12 @@ def t1w_caudcurv(t1, segmentation, target_label=9, prior_labels=[1, 2], prior_ta
     # FIXME compute curvature on the binary image
     caud0 = load_labeled_caudate(label=prior_labels, subdivide=0)
     if isinstance(prior_target_label, list):
-        caudsd = load_labeled_caudate(label=prior_target_label, subdivide=subdivide)
+        caudsd = load_labeled_caudate(label=prior_target_label, subdivide=subdivide, grid=grid )
     else:
-        caudsd = load_labeled_caudate(label=[prior_target_label], subdivide=subdivide)
+        caudsd = load_labeled_caudate(label=[prior_target_label], subdivide=subdivide, grid=grid )
     if verbose:
         print('max caudsd '+ str( caudsd.max() ) )
     prior_binary = ants.mask_image(caud0, caud0, prior_labels, binarize=True)
-    labeled = label_transfer( binaryimage, prior_binary, caudsd )
+    labeled = label_transfer( binaryimage, prior_binary, caudsd, propagate=propagate )
     return labeled
 
