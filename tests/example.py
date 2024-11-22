@@ -4,6 +4,48 @@ import antspyt1w
 import curvanato
 import re
 import os  # For checking file existence
+
+
+import pandas as pd
+
+def pd_to_wide(mydf, label_column='Description', column_values=None, prefix=""):
+    """
+    Transform a DataFrame to a wide format where the label_column values become column names 
+    with a specified prefix and associated column_values.
+
+    Parameters
+    ----------
+    mydf : pd.DataFrame
+        Input DataFrame with labels and columns to pivot.
+    
+    label_column : str
+        Column containing labels (e.g., 'Description') to use as new column names.
+    
+    column_values : list of str
+        Column names to be included in the wide DataFrame.
+    
+    prefix : str
+        Prefix to add before each label name in the new columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        Wide format DataFrame.
+    """
+    if column_values is None:
+        raise ValueError("Please specify column_values as a list of column names to include.")
+    wide_df = pd.DataFrame()
+    for col in column_values:
+        temp_df = mydf[[label_column, col]].copy()
+        temp_df.columns = [label_column, f"{prefix}{col}"]
+        temp_df = temp_df.set_index(label_column).T
+        wide_df = pd.concat([wide_df, temp_df], axis=1)
+    wide_df.reset_index(drop=True, inplace=True)
+    return wide_df
+
+
+zeekee
+
 # ANTPD data
 fn='./bids//sub-RC4110/ses-2/anat/sub-RC4110_ses-2_T1w.nii.gz'
 fn='.//bids/sub-RC4111/ses-1/anat/sub-RC4111_ses-1_T1w.nii.gz' # easy
@@ -35,7 +77,7 @@ otherside=True
 if otherside:   
     plabs=[3,4]
     xx = curvanato.t1w_caudcurv( t1, hoa, target_label=10, ventricle_label=2, 
-        prior_labels=plabs, prior_target_label=plabs, subdivide=0, grid=0, verbose=True )
+        prior_labels=plabs, prior_target_label=plabs, subdivide=0, grid=16, verbose=True )
     ccfn = [
         re.sub( ".nii.gz", "_caudRkappa.nii.gz" , fn ), 
         re.sub( ".nii.gz", "_caudR.nii.gz" , fn ),

@@ -203,6 +203,46 @@ def create_gaussian_bump_volume(dim, centers, sigma):
     return volume
 
 
+def pd_to_wide(mydf, label_column='Description', column_values=None, prefix=""):
+    """
+    Transform a DataFrame to a wide format where each label in the label_column
+    contributes to new column names, combined with the specified column_values.
+
+    Parameters
+    ----------
+    mydf : pd.DataFrame
+        Input DataFrame with labels and columns to pivot.
+    
+    label_column : str
+        Column containing labels (e.g., 'Description') to use as new column names.
+    
+    column_values : list of str
+        Column names to be included in the wide DataFrame.
+    
+    prefix : str
+        Prefix to add before each label name in the new columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        Wide format DataFrame with one row and new column names.
+    """
+    if column_values is None:
+        raise ValueError("Please specify column_values as a list of column names to include.")
+    
+    # Initialize an empty dictionary to hold the wide data
+    wide_data = {}
+    
+    # Iterate over each column value and create new column names
+    for col in column_values:
+        for _, row in mydf.iterrows():
+            new_col_name = f"{prefix}{row[label_column]}{col}"
+            wide_data[new_col_name] = row[col]
+    
+    # Convert the dictionary to a one-row DataFrame
+    wide_df = pd.DataFrame([wide_data])
+    return wide_df
+
 def compute_curvature(segmentation_image, smoothing=1.2, noise=[0, 0.01]):
     """
     Computes the curvature of a segmented anatomical structure.
@@ -411,5 +451,6 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
         ventgrow = ants.resample_image_to_target( ventgrow, labeled, interp_type='nearestNeighbor' )
         labeled = labeled * ventgrow
     descriptor = antspyt1w.map_intensity_to_dataframe( mydf, curvitr, labeled )
+    descriptor = pd_to_wide( descriptor, column_values=['Mean','Volume'])
     return curvitr, labeled, descriptor
 
