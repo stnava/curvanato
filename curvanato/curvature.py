@@ -435,7 +435,7 @@ def compute_curvature(segmentation_image, smoothing=1.2, noise=[0, 0.01]):
 
 
 
-def label_transfer(target_binary, prior_binary, prior_label, propagate=True ):
+def label_transfer(target_binary, prior_binary, prior_label, propagate=True, jacobian=False ):
     """
     Perform label transfer from a prior image to a target image using deformable image registration.
 
@@ -452,6 +452,8 @@ def label_transfer(target_binary, prior_binary, prior_label, propagate=True ):
     prior_label : ants.ANTsImage
         A labeled ANTsImage representing the labels in the prior image.
     propagate: boolean
+    jacobian: boolean
+        will return the jacobian of the registration to the prior space
 
     Returns:
     -------
@@ -483,6 +485,11 @@ def label_transfer(target_binary, prior_binary, prior_label, propagate=True ):
     """
     target_binary_c = ants.crop_image( target_binary, ants.iMath( target_binary, "MD", 4 ) )
     bindist = compute_distance_map( target_binary_c )
+    if jacobian:
+        croppedTdog = ants.crop_image( prior_binary, ants.iMath( prior_binary, "MD", 10 ) )
+        croppedTdogD = compute_distance_map( croppedTdog )
+        reg = ants.registration( croppedTdogD, bindist, 'SyNCC')
+        return ants.create_jacobian_determinant_image( prior_binary, reg['fwdtransforms'][0],1 )
     reg = ants.registration(bindist, compute_distance_map( prior_binary ), 'SyNCC')
     labeled = ants.apply_transforms(target_binary_c, prior_label, reg['fwdtransforms'], 
         interpolator='nearestNeighbor' )
