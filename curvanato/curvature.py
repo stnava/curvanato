@@ -5,9 +5,138 @@ import ants
 import antspynet
 import antspyt1w
 import pandas as pd
-
-
 import pandas as pd
+import ants
+
+
+import numpy as np
+import ants
+from sklearn.decomposition import PCA
+
+def flatness(binary_image):
+    """
+    Compute the flatness of binary image using PCA on voxel positions.
+
+    Parameters
+    ----------
+    binary_image : ants.ANTsImage
+        Input binary image.
+
+    Returns
+    -------
+    flatness : float
+        Ratio of the smallest to the largest PCA eigenvalue (flatness metric).
+    """
+    # Get voxel positions where intensity > threshold
+    voxel_positions = np.argwhere(binary_image.numpy() > 0)
+    
+    # Perform PCA on voxel positions
+    pca = PCA(n_components=3)
+    pca.fit(voxel_positions)
+    
+    # Eigenvalues from PCA
+    eigenvalues = pca.explained_variance_
+    
+    # Flatness ratio (smallest eigenvalue / largest eigenvalue)
+    flatness = eigenvalues.min() / eigenvalues.max()
+    
+    return 1.0 - flatness
+
+def skeletonize_topo(x, laplacian_threshold=0.30, propagation_option=2 ):
+    """
+    Skeletonize a binary segmentation with topology preserving methods
+
+    This function uses topologically constrained label propagation to thin
+    an existing segmentation into a skeleton. It works best when the input
+    segmentation is well-composed.
+
+    Parameters
+    ----------
+    x : ANTsImage
+        Input binary image.
+
+    laplacian_threshold : float, optional
+        Threshold for the Laplacian speed image, between 0 and 1 (default is 0.25).
+
+    propagation_option : int, optional
+        Propagation constraint option:
+        - 0: None
+        - 1: Well-composed
+        - 2: Topological constraint (default is 1).
+
+    Returns
+    -------
+    ANTsImage
+        Skeletonized binary image.
+    """
+    # Negate image to prepare for processing
+    wm = x.clone()# ants.threshold_image(x, 0, 0)
+
+    # Compute Laplacian of the binary image
+    wmd = ants.iMath(x, "MaurerDistance") * x  # Distance transform
+    wmd[ wm == 1] = wmd[ wm == 1] * ( -1.0 )
+    wmdl = ants.iMath(wmd, "Laplacian", 1.0, 1)
+#    ants.plot( wm, crop=True )
+#    ants.plot( wmd, crop=True  )
+#    ants.plot( wm, wmdl, crop=True  )
+    # Threshold to create a speed image
+    speed = ants.threshold_image(wmdl, 0.0, laplacian_threshold)
+    speed = ants.threshold_image(speed, 0, 0)  # Negate the speed image
+    # Extract the largest connected component
+    wm = ants.iMath(wm, "GetLargestComponent")
+    # Propagate labels through the speed image using topological constraints
+    wmNeg = x * 0.0
+    wmNeg[ x == 0 ]=1
+    wmskel = ants.iMath(speed, "PropagateLabelsThroughMask", wmNeg, 200000, propagation_option)
+    wmskel = ants.threshold_image(wmskel, 0, 0)  # Final negation
+    return wmskel
+
+def skeletonize( x ):
+    import numpy as np
+    from skimage.morphology import skeletonize_3d
+    import nibabel as nib  # For loading and saving NIfTI images
+    # Ensure the image is binary (0s and 1s)
+    binary_image = (x.numpy() > 0).astype(np.uint8)
+    # Apply 3D skeletonization
+    skeleton = ants.from_numpy( skeletonize_3d(binary_image) )
+    return ants.copy_image_info( x, skeleton )
+
+
+def compute_distance_map(binary_image):
+    """
+    Compute the signed distance map of a binary image using the Maurer distance transform.
+    
+    The function calculates the distance of each pixel/voxel in the binary image to the nearest 
+    boundary, with negative distances assigned inside the binary object.
+
+    Parameters
+    ----------
+    binary_image : ants.ANTsImage
+        A binary image where foreground pixels are 1 and background pixels are 0.
+
+    Returns
+    -------
+    distance_map : ants.ANTsImage
+        The computed signed distance map, where negative values represent distances 
+        inside the binary object and positive values represent distances outside.
+    
+    Example
+    -------
+    >>> binary_image = ants.threshold_image(ants.image_read("example.nii.gz"), 0.5, 1.0)
+    >>> distance_map = compute_distance_map(binary_image)
+    >>> ants.image_write(distance_map, "distance_map.nii.gz")
+    """
+    # Clone the input image for manipulation
+    binary_clone = binary_image.clone()
+
+    # Compute the Maurer distance transform
+    distance_transform = ants.iMath(binary_image, "MaurerDistance")
+
+    # Assign negative distances inside the binary region
+    signed_distance = distance_transform * binary_image
+    signed_distance[binary_clone == 1] *= -1.0
+
+    return signed_distance
 
 def make_label_dataframe(label_image):
     """
@@ -83,7 +212,7 @@ def create_spherical_volume(dim, radius, center):
 import pkg_resources
 import antspyt1w
 
-def load_labeled_caudate(label=[1, 2], subdivide=0, grid=0, verbose=False):
+def load_labeled_caudate(label=[1, 2], subdivide=0, grid=0, option='laterality', binarize=True, verbose=False):
     """
     Load a labeled NIfTI image of the caudate, mask it to specified labels, and optionally subdivide the labels.
 
@@ -99,6 +228,10 @@ def load_labeled_caudate(label=[1, 2], subdivide=0, grid=0, verbose=False):
         Number of times to subdivide the labels for finer segmentation. Default is 0.
     grid : int, optional
         Grid size with which to subdivide the labels for finer segmentation. Default is 0.
+    option: string
+        either laterality or hmt (head, midbody, tail)
+    binarize : bool, optional
+        If `True`, binarizes the image. Default is True.
     verbose : bool, optional
         If `True`, prints the maximum label value after processing. Default is `False`.
 
@@ -123,12 +256,17 @@ def load_labeled_caudate(label=[1, 2], subdivide=0, grid=0, verbose=False):
 
     """
     # Get the path to the data file in the installed package
-    nifti_path = pkg_resources.resource_filename(
-        "curvanato", "data/labeled_caudate.nii.gz"
-    )
+    if option == 'laterality' :
+        nifti_path = pkg_resources.resource_filename(
+            "curvanato", "data/labeled_caudate_medial_vs_lateral.nii.gz"
+        )
+    else:
+        nifti_path = pkg_resources.resource_filename(
+            "curvanato", "data/labeled_caudate_head_mid_tail.nii.gz"
+        )
     # Load the NIfTI file
     seg = ants.image_read(nifti_path)
-    seg = ants.mask_image(seg, seg, label, binarize=True)
+    seg = ants.mask_image(seg, seg, label, binarize=binarize)
     if subdivide > 0:
         for x in range(subdivide):
             seg = antspyt1w.subdivide_labels(seg)
@@ -301,7 +439,7 @@ def label_transfer(target_binary, prior_binary, prior_label, propagate=True ):
     """
     Perform label transfer from a prior image to a target image using deformable image registration.
 
-    This function aligns a prior binary image to a target binary image using SyN registration (non-linear transformation) 
+    This function aligns a prior binary image to a target binary image using SyN registration (non-linear transformation) on the distance maps
     and propagates the labels from the prior to the target. The transferred labels are post-processed to ensure 
     continuity using the 'PropagateLabelsThroughMask' operation from ANTs.
 
@@ -344,7 +482,8 @@ def label_transfer(target_binary, prior_binary, prior_label, propagate=True ):
     - `ants.iMath`: For image-based mathematical operations.
     """
     target_binary_c = ants.crop_image( target_binary, ants.iMath( target_binary, "MD", 4 ) )
-    reg = ants.registration(target_binary_c, prior_binary, 'SyNCC')
+    bindist = compute_distance_map( target_binary_c )
+    reg = ants.registration(bindist, compute_distance_map( prior_binary ), 'SyNCC')
     labeled = ants.apply_transforms(target_binary_c, prior_label, reg['fwdtransforms'], 
         interpolator='nearestNeighbor' )
     if propagate:
