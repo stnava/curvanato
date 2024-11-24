@@ -667,10 +667,12 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
     labeled = segmentation * 0.0
     curved = segmentation * 0.0
     binaryimage = ants.threshold_image(segmentation, target_label, target_label).iMath("FillHoles").iMath("GetLargestComponent")
-    caud0 = load_labeled_caudate(label=prior_labels, subdivide=0, option='laterality')
-    caudsd = load_labeled_caudate(label=prior_target_label, subdivide=subdivide, grid=grid, option='laterality' )
-#    ants.plot( caud0, caudsd, axis=2, crop=True )
-    prior_binary = caud0.clone()
+    caud0 = load_labeled_caudate(label=prior_labels, 
+        subdivide=0, grid=0, option='laterality')
+    caudsd = load_labeled_caudate(label=prior_target_label, 
+        subdivide=subdivide, grid=grid, option='laterality' )
+    prior_binary = caud0.clone() # ants.mask_image(caud0, caud0, prior_labels, binarize=True)
+    propagate=True
     labeled = label_transfer( binaryimage, prior_binary, caudsd, propagate=propagate )
     import numpy as np
     spmag=0.0
@@ -680,13 +682,11 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
     ####    
     if smoothing is None:
         smoothing=np.sqrt( spmag )
-    if verbose:
-        print("Curvature")
     curvit = compute_curvature( binaryimage, smoothing=smoothing, distance_map = True )
     curvitr = ants.resample_image_to_target( curvit, labeled, interp_type='linear' )
     binaryimager = ants.resample_image_to_target( binaryimage, labeled, interp_type='nearestNeighbor' )
     imgd = compute_distance_map( binaryimager )
-    imggk=cluster_image_gradient( binaryimager, binaryimager, n_clusters=2, sigma=smoothing) * binaryimager 
+    imggk=cluster_image_gradient( binaryimager, binaryimager, n_clusters=2, sigma=0.25) * binaryimager 
     imggk = ants.iMath( binaryimager, "PropagateLabelsThroughMask", imggk, 200000, 0 )
     sum2 = (ants.threshold_image(imggk,2,2) * labeled ).sum()
     sum1 = (ants.threshold_image(imggk,1,1) * labeled ).sum()
@@ -697,8 +697,8 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
     sidelabelRm = remove_curvature_spine( curvitr, 
         ants.threshold_image(imggk,kmeansLabel,kmeansLabel) )
     labeled = ants.iMath( sidelabelRm * ants.threshold_image(imggk,kmeansLabel,kmeansLabel), 
-        "PropagateLabelsThroughMask", 
-        labeled * ants.threshold_image(imggk,kmeansLabel,kmeansLabel), 200000, 0 )
+            "PropagateLabelsThroughMask", 
+            labeled * ants.threshold_image(imggk,kmeansLabel,kmeansLabel), 200000, 0 )
     mydf = make_label_dataframe( labeled )
     if ventricle_label is not None:
         ventgrow = ants.threshold_image( segmentation, ventricle_label, ventricle_label ).iMath("MD",1)
@@ -708,4 +708,3 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
     descriptor = antspyt1w.map_intensity_to_dataframe( mydf, curvitr, labeled )
     descriptor = pd_to_wide( descriptor, column_values=['Mean','Volume'])
     return curvitr, labeled, descriptor
-
