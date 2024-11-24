@@ -10,3 +10,9 @@ print( np.unique(  imggk.numpy() ) )
 ants.image_write(imggk,'/tmp/tempk.nii.gz')
 ants.image_write(imgb,'/tmp/tempi.nii.gz')
 
+
+imggk=curvanato.cluster_image_gradient( ants.iMath(imgb,'MaurerDistance'), imgb, n_clusters=6, sigma=1.5) * imgb 
+imggk = ants.iMath( imgb, "PropagateLabelsThroughMask", imggk, 200000, 0 )
+print( np.unique(  imggk.numpy() ) )
+ants.image_write(imggk,'/tmp/tempk.nii.gz')
+ants.image_write(imgb,'/tmp/tempi.nii.gz')

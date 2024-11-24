@@ -423,7 +423,7 @@ def compute_curvature(segmentation_image, smoothing=1.2, noise=[0, 0.01], distan
     # Add noise to the segmentation image to mimic variability
     segmentation_image_nz = ants.add_noise_to_image(segmentation_image, 'additivegaussian', noise)
     if distance_map:
-        segmentation_image_nz = compute_distance_map( segmentation_image )
+        segmentation_image_nz = ants.iMath( segmentation_image, 'MaurerDistance' ) * (-1.0) # compute_distance_map( segmentation_image )
     
     # Determine the minimum spacing for smoothing based on image resolution
     minspc = find_minimum(list(ants.get_spacing(segmentation_image)))
@@ -432,7 +432,7 @@ def compute_curvature(segmentation_image, smoothing=1.2, noise=[0, 0.01], distan
     spherical_volume_s = ants.smooth_image(segmentation_image_nz, minspc, sigma_in_physical_coordinates=True) 
     
     # Calculate the curvature image
-    kimage = ants.weingarten_image_curvature( spherical_volume_s * segmentation_image, smoothing)
+    kimage = ants.weingarten_image_curvature( spherical_volume_s , smoothing) * segmentation_image
     
     return kimage
 
@@ -667,6 +667,7 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
     if verbose:
         print('max prior_binary '+ str( prior_binary.max() ) )
         print( prior_labels )
+
 #    ants.plot( binaryimage, axis=2, crop=True  )
 #    ants.plot( prior_binary, axis=2, crop=True  )
 #    ants.plot( prior_binary, caudsd, axis=2, crop=True )
@@ -678,7 +679,7 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
         for k in range(segmentation.dimension):
             spmag=spmag+spc[k]*spc[k]
         smoothing=np.sqrt( spmag )
-    curvit = compute_curvature( binaryimage, smoothing=smoothing, noise=[0, 0.0001] )
+    curvit = compute_curvature( binaryimage, smoothing=smoothing, distance_map = True )
     mydf = make_label_dataframe( labeled )
     curvitr = ants.resample_image_to_target( curvit, labeled, interp_type='linear' )
     if ventricle_label is not None:
