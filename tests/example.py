@@ -24,16 +24,18 @@ if os.path.exists(fn):
 #
 vlab=None
 leftside=True
-gr=32
+gr=0
+subd=3
 if leftside:
     ccfn = [
         re.sub( ".nii.gz", "_caudLkappa.nii.gz" , fn ), 
         re.sub( ".nii.gz", "_caudL.nii.gz" , fn ),
         re.sub( ".nii.gz", "_caudLkappa.csv" , fn ) ]
     print("Begin " + fn + " caud kap")
-    plabs=[1,2]
+    pcaud=[1,2]
+    plabs=[2]
     xx = curvanato.t1w_caudcurv( t1, hoa, target_label=9, ventricle_label=vlab, 
-        prior_labels=plabs, prior_target_label=plabs, subdivide=0, grid=gr, verbose=True )
+        prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr, verbose=True )
     ants.image_write( xx[0], ccfn[0] )
     ants.image_write( xx[1], ccfn[1] )
     xx[2].to_csv( ccfn[2] )
@@ -41,9 +43,10 @@ if leftside:
 
 otherside=True
 if otherside:   
-    plabs=[3,4]
+    pcaud=[3,4]
+    plabs=[4]
     xx = curvanato.t1w_caudcurv( t1, hoa, target_label=10, ventricle_label=vlab, 
-        prior_labels=plabs, prior_target_label=plabs, subdivide=0, grid=gr, verbose=True )
+        prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr, verbose=True )
     ccfn = [
         re.sub( ".nii.gz", "_caudRkappa.nii.gz" , fn ), 
         re.sub( ".nii.gz", "_caudR.nii.gz" , fn ),

@@ -16,3 +16,4 @@ from .curvature import compute_distance_map
 from .curvature import flatness
 from .curvature import image_gradient
 from .curvature import cluster_image_gradient
+from .curvature import remove_curvature_spine
