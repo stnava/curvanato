@@ -476,12 +476,13 @@ def image_gradient(image, sigma = 0.25 ):
 
     return gradient_dict
 
-def cluster_image_gradient(image, n_clusters=3, sigma=0.25, random_state=None):
+def cluster_image_gradient(image, binary_image, n_clusters=2, sigma=0.5, random_state=None):
     """
     Computes the gradient of an image and performs k-means clustering on the gradient.
     
     Parameters:
-    - image: ANTsPy image. Input image to process.
+    - image: ANTsPy image. Input image to process.  could be a distance map.
+    - binary_image: ANTsPy image. Input image to process. binary.
     - n_clusters: int. Number of clusters for k-means.
     - sigma: physical coordinate sigma for smoothing the gradient
     - random_state: int or None. Random state for reproducibility.
@@ -508,7 +509,7 @@ def cluster_image_gradient(image, n_clusters=3, sigma=0.25, random_state=None):
         feature_matrix = np.stack([gradient_x.ravel(), gradient_y.ravel(), gradient_z.ravel()], axis=1)
     
     # Perform k-means clustering
-    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state)
+    kmeans = KMeans(n_clusters=n_clusters+1, random_state=random_state,n_init='auto')
     labels = kmeans.fit_predict(feature_matrix)
     
     # Reshape labels to match the image shape
@@ -516,9 +517,11 @@ def cluster_image_gradient(image, n_clusters=3, sigma=0.25, random_state=None):
     
     # Convert the label array back to an ANTs image
     clustered_image = ants.from_numpy(label_image_np, origin=image.origin, spacing=image.spacing)
-    clustered_image[ clustered_image == 0 ] = n_clusters
-    return ants.copy_image_info( image, clustered_image )
-
+    clustered_image = ants.copy_image_info( image, clustered_image )
+    # BUG: unclear why the line below does not work ...
+    # clustered_image = ants.iMath( binary_image.clone(), "PropagateLabelsThroughMask", 
+    #    clustered_image.clone(), 200000, 0 )
+    return clustered_image
 
 
 def label_transfer(target_binary, prior_binary, prior_label, propagate=True, jacobian=False ):
