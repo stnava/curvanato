@@ -14,3 +14,5 @@ from .curvature import skeletonize_topo
 from .curvature import skeletonize
 from .curvature import compute_distance_map
 from .curvature import flatness
+from .curvature import image_gradient
+from .curvature import cluster_image_gradient

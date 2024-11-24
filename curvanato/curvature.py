@@ -434,6 +434,86 @@ def compute_curvature(segmentation_image, smoothing=1.2, noise=[0, 0.01]):
     return kimage
 
 
+def image_gradient(image):
+    """
+    Computes the gradient of an ANTs image in all spatial dimensions.
+
+    Parameters:
+    - image: ANTsPy image. Input image for gradient computation.
+
+    Returns:
+    - gradient_dict: Dictionary of ANTs images with keys as spatial dimensions ('x', 'y', 'z').
+    """
+    # Ensure image is valid
+    if not isinstance(image, ants.ANTsImage):
+        raise ValueError("Input must be an ANTsPy image.")
+
+    # Get image dimensions
+    dim = image.dimension
+    spacing = image.spacing
+
+    # Convert image to NumPy array for processing
+    image_np = image.numpy()
+
+    # Initialize dictionary to store gradient components
+    gradient_dict = {}
+
+    # Compute gradient along each dimension
+    for axis in range(dim):
+        # Compute finite differences along the current axis
+        gradient_axis = np.gradient(image_np, spacing[axis], axis=axis)
+        
+        # Convert gradient back to ANTs image
+        gradient_image = ants.from_numpy(gradient_axis, origin=image.origin, spacing=image.spacing)
+        
+        # Add to dictionary with axis labels ('x', 'y', 'z')
+        gradient_dict[chr(120 + axis)] = gradient_image  # chr(120) = 'x', chr(121) = 'y', etc.
+
+    return gradient_dict
+
+def cluster_image_gradient(image, n_clusters=3, random_state=None):
+    """
+    Computes the gradient of an image and performs k-means clustering on the gradient.
+    
+    Parameters:
+    - image: ANTsPy image. Input image to process.
+    - n_clusters: int. Number of clusters for k-means.
+    - random_state: int or None. Random state for reproducibility.
+    
+    Returns:
+    - clustered_image: ANTsPy image with cluster labels.
+    """
+    import ants
+    import numpy as np
+    from sklearn.cluster import KMeans
+    # Compute the gradient of the image
+    gradient = image_gradient(image)
+    
+    # Extract gradient components as NumPy arrays
+    gradient_x = gradient['x'].numpy()
+    gradient_y = gradient['y'].numpy()
+    if image.dimension == 3:
+        gradient_z = gradient['z'].numpy()
+    
+    # Stack gradient components into a feature matrix
+    if image.dimension == 2:
+        feature_matrix = np.stack([gradient_x.ravel(), gradient_y.ravel()], axis=1)
+    elif image.dimension == 3:
+        feature_matrix = np.stack([gradient_x.ravel(), gradient_y.ravel(), gradient_z.ravel()], axis=1)
+    
+    # Perform k-means clustering
+    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state)
+    labels = kmeans.fit_predict(feature_matrix)
+    
+    # Reshape labels to match the image shape
+    label_image_np = labels.reshape(image.shape)
+    
+    # Convert the label array back to an ANTs image
+    clustered_image = ants.from_numpy(label_image_np, origin=image.origin, spacing=image.spacing)
+    
+    return clustered_image
+
+
 
 def label_transfer(target_binary, prior_binary, prior_label, propagate=True, jacobian=False ):
     """
