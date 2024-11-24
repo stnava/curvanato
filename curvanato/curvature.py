@@ -381,7 +381,7 @@ def pd_to_wide(mydf, label_column='Description', column_values=None, prefix=""):
     wide_df = pd.DataFrame([wide_data])
     return wide_df
 
-def compute_curvature(segmentation_image, smoothing=1.2, noise=[0, 0.01]):
+def compute_curvature(segmentation_image, smoothing=1.2, noise=[0, 0.01], distance_map = True ):
     """
     Computes the curvature of a segmented anatomical structure.
 
@@ -399,6 +399,7 @@ def compute_curvature(segmentation_image, smoothing=1.2, noise=[0, 0.01]):
     - noise : list of [mean, std_dev], optional
         Parameters for additive Gaussian noise applied to the segmentation image, 
         specified as a list with mean and standard deviation (default is [0, 0.01]).
+    - distance_map : boolean ( default  True)
 
     Returns:
     - numpy.ndarray
@@ -421,6 +422,8 @@ def compute_curvature(segmentation_image, smoothing=1.2, noise=[0, 0.01]):
     """
     # Add noise to the segmentation image to mimic variability
     segmentation_image_nz = ants.add_noise_to_image(segmentation_image, 'additivegaussian', noise)
+    if distance_map:
+        segmentation_image_nz = compute_distance_map( segmentation_image )
     
     # Determine the minimum spacing for smoothing based on image resolution
     minspc = find_minimum(list(ants.get_spacing(segmentation_image)))
@@ -434,12 +437,13 @@ def compute_curvature(segmentation_image, smoothing=1.2, noise=[0, 0.01]):
     return kimage
 
 
-def image_gradient(image):
+def image_gradient(image, sigma = 0.25 ):
     """
     Computes the gradient of an ANTs image in all spatial dimensions.
 
     Parameters:
     - image: ANTsPy image. Input image for gradient computation.
+    - sigma: physical coordinate sigma for smoothing the gradient
 
     Returns:
     - gradient_dict: Dictionary of ANTs images with keys as spatial dimensions ('x', 'y', 'z').
@@ -465,19 +469,21 @@ def image_gradient(image):
         
         # Convert gradient back to ANTs image
         gradient_image = ants.from_numpy(gradient_axis, origin=image.origin, spacing=image.spacing)
+        gradient_image = ants.smooth_image( gradient_image, sigma, sigma_in_physical_coordinates=True )
         
         # Add to dictionary with axis labels ('x', 'y', 'z')
         gradient_dict[chr(120 + axis)] = gradient_image  # chr(120) = 'x', chr(121) = 'y', etc.
 
     return gradient_dict
 
-def cluster_image_gradient(image, n_clusters=3, random_state=None):
+def cluster_image_gradient(image, n_clusters=3, sigma=0.25, random_state=None):
     """
     Computes the gradient of an image and performs k-means clustering on the gradient.
     
     Parameters:
     - image: ANTsPy image. Input image to process.
     - n_clusters: int. Number of clusters for k-means.
+    - sigma: physical coordinate sigma for smoothing the gradient
     - random_state: int or None. Random state for reproducibility.
     
     Returns:
@@ -487,7 +493,7 @@ def cluster_image_gradient(image, n_clusters=3, random_state=None):
     import numpy as np
     from sklearn.cluster import KMeans
     # Compute the gradient of the image
-    gradient = image_gradient(image)
+    gradient = image_gradient(image,sigma=sigma)
     
     # Extract gradient components as NumPy arrays
     gradient_x = gradient['x'].numpy()
@@ -510,8 +516,8 @@ def cluster_image_gradient(image, n_clusters=3, random_state=None):
     
     # Convert the label array back to an ANTs image
     clustered_image = ants.from_numpy(label_image_np, origin=image.origin, spacing=image.spacing)
-    
-    return clustered_image
+    clustered_image[ clustered_image == 0 ] = n_clusters
+    return ants.copy_image_info( image, clustered_image )
 
 
 

@@ -23,7 +23,7 @@ if os.path.exists(fn):
 caud=ants.threshold_image( hoa, 9,9 )
 tcaud=curvanato.load_labeled_caudate( option='hmt', binarize=True, label=[1,3,5] )
 myj=curvanato.label_transfer( caud, tcaud, tcaud, jacobian=True )
-deekee
+
 
 leftside=True
 if leftside:
