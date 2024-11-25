@@ -587,20 +587,22 @@ def label_transfer(target_binary, prior_binary, prior_label, propagate=True, jac
     return labeled, reg
 
 
-def remove_curvature_spine( curvature_image, segmentation_image ):
+def remove_curvature_spine( curvature_image, segmentation_image, dilation=0 ):
     """
     Removes the spine region from an image based on curvature.
 
     Parameters:
     - curvature_image: ANTsPy image of curvature.
     - segmentation_image: ants image. from which to remove the spine.
+    - dilation : int default zero
 
     Returns:
     - modified_segmentation_image: ANTsPy image with the spine region removed.
     """
     curvature_segmentation = ants.threshold_image(curvature_image + segmentation_image, "Otsu", 2 )
     curvature_segmentation = ants.threshold_image( curvature_segmentation, 2, 2 )
-    curvature_segmentation = ants.iMath( curvature_segmentation, "MD", 1 )
+    if dilation > 0 :
+        curvature_segmentation = ants.iMath( curvature_segmentation, "MD", dilation )
     modified_image = segmentation_image.clone()  # Clone the input image to avoid modifying it in place
     modified_image[ curvature_segmentation == 1 ] = 0
     return modified_image
@@ -697,7 +699,6 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
     labeled = ants.iMath( sidelabelRm * ants.threshold_image(imggk,kmeansLabel,kmeansLabel), 
             "PropagateLabelsThroughMask", 
             labeled * ants.threshold_image(imggk,kmeansLabel,kmeansLabel), 200000, 0 )
-    mydf = make_label_dataframe( labeled )
     if ventricle_label is not None:
         ventgrow = ants.threshold_image( segmentation, ventricle_label, ventricle_label ).iMath("MD",1)
         ventgrow = ants.resample_image_to_target( ventgrow, labeled, interp_type='nearestNeighbor' )
@@ -716,12 +717,54 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
         if verbose:
             print("end prop ") 
     elif priorparcellation is not None:
+        print("Use prior parcellation")
         priorsmapped = ants.apply_transforms( curvitr, priorparcellation, reg['fwdtransforms'], 
             interpolator='nearestNeighbor' )
-        labeled = ants.iMath( labeled, 'PropagateLabelsThroughMask', priorsmapped, 200000, 0 )
+        labeled = ants.iMath( ants.threshold_image(labeled,1,9.e9), 
+            'PropagateLabelsThroughMask', priorsmapped, 200000, 0 )
+    mydf = make_label_dataframe( labeled )
     descriptor = antspyt1w.map_intensity_to_dataframe( mydf, curvitr, labeled )
-    descriptor = pd_to_wide( descriptor, column_values=['Mean','Volume'])
+    descriptor = compute_geom_per_label( labeled, descriptor, flatness, 'Flatness')
+    gdesc = ants.label_geometry_measures( labeled )
+    geos = ['Mean', 'VolumeInMillimeters', 'SurfaceAreaInMillimetersSquared', 'Eccentricity', 'Elongation','Flatness']
+    descriptor = pd.concat([descriptor, gdesc], ignore_index=True)
+    descriptor = pd_to_wide( descriptor, column_values=geos)
+    descriptor = descriptor.loc[:, ~descriptor.columns.str.startswith('nan')]
     return curvitr, labeled, descriptor
+
+
+def compute_geom_per_label(img, dataframe, geom_fn, geom_name):
+    """
+    Compute a flatness metric for each label in a segmentation image and update the DataFrame.
+
+    Parameters:
+    - img: ANTsPy image. The input image with labeled segmentation regions.
+    - dataframe: pandas.DataFrame. Must contain a column 'Label' with label values.
+    - geom_fn: function. A user-defined function that computes flatness for a given binary image.
+    - geom_name: name for the new column
+
+    Returns:
+    - dataframe: pandas.DataFrame. Updated DataFrame with a new 'Flatness' column.
+    """
+    if 'Label' not in dataframe.columns:
+        raise ValueError("The dataframe must contain a 'Label' column.")
+
+    # Initialize the Flatness column if it doesn't exist
+    if geom_name not in dataframe.columns:
+        dataframe[geom_name] = None
+
+    # Loop over unique label values in the DataFrame
+    for i, label in enumerate(dataframe['Label']):
+        # Threshold the image for the current label
+        temp = ants.threshold_image(img, label, label)
+        
+        # Compute the flatness for the thresholded region
+        ff = geom_fn(temp)
+        
+        # Update the DataFrame
+        dataframe.at[i, geom_name] = ff
+
+    return dataframe
 
 def compute_smoothing_spacing(segmentation):
     """
