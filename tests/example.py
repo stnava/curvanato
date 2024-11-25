@@ -16,16 +16,11 @@ if os.path.exists(fn):
         hoa = antspynet.harvard_oxford_atlas_labeling(t1, verbose=True)['segmentation_image']
         ants.image_write( hoa, hoafn)
     hoa = ants.image_read( hoafn )
-#
-# test the jacobian    
-# caud=ants.threshold_image( hoa, 9,9 )
-# tcaud=curvanato.load_labeled_caudate( option='hmt', binarize=True, label=[1,3,5] )
-# myj=curvanato.label_transfer( caud, tcaud, tcaud, jacobian=True )
-#
+
 vlab=None
 leftside=True
 gr=0
-subd=3
+subd=1
 if leftside:
     ccfn = [
         re.sub( ".nii.gz", "_caudLkappa.nii.gz" , fn ), 
@@ -36,8 +31,8 @@ if leftside:
     plabs=[2]
     xx = curvanato.t1w_caudcurv( t1, hoa, target_label=9, ventricle_label=vlab, 
         prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr, verbose=True )
-    ants.image_write( xx[0], ccfn[0] )
-    ants.image_write( xx[1], ccfn[1] )
+    for j in range(2):
+        ants.image_write( xx[j], ccfn[j] )
     xx[2].to_csv( ccfn[2] )
 
 
@@ -54,3 +49,10 @@ if otherside:
     ants.image_write( xx[0], ccfn[0] )
     ants.image_write( xx[1], ccfn[1] )
     xx[2].to_csv( ccfn[2] )
+
+#
+# test the jacobian    
+# caud=ants.threshold_image( hoa, 9,9 )
+# tcaud=curvanato.load_labeled_caudate( option='hmt', binarize=True, label=[1,3,5] )
+# myj=curvanato.label_transfer( caud, tcaud, tcaud, jacobian=True )
+#

@@ -547,7 +547,7 @@ def label_transfer(target_binary, prior_binary, prior_label, propagate=True, jac
     Returns:
     -------
     ants.ANTsImage
-        A labeled ANTsImage with the transferred labels mapped onto the target image.
+        A labeled ANTsImage with the transferred labels mapped onto the target image and a registration result
 
     Examples:
     --------
@@ -584,7 +584,7 @@ def label_transfer(target_binary, prior_binary, prior_label, propagate=True, jac
         interpolator='nearestNeighbor' )
     if propagate:
         labeled = ants.iMath(target_binary_c, 'PropagateLabelsThroughMask', labeled, 1, 0)
-    return labeled
+    return labeled, reg
 
 
 def remove_curvature_spine( curvature_image, segmentation_image ):
@@ -670,18 +670,12 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
     caud0 = load_labeled_caudate(label=prior_labels, 
         subdivide=0, grid=0, option='laterality')
     caudsd = load_labeled_caudate(label=prior_target_label, 
-        subdivide=subdivide, grid=grid, option='laterality' )
+        subdivide=0, grid=0, option='laterality' )
     prior_binary = caud0.clone() # ants.mask_image(caud0, caud0, prior_labels, binarize=True)
     propagate=True
-    labeled = label_transfer( binaryimage, prior_binary, caudsd, propagate=propagate )
-    import numpy as np
-    spmag=0.0
-    spc=ants.get_spacing(segmentation)
-    for k in range(segmentation.dimension):
-        spmag=spmag+spc[k]*spc[k]
-    ####    
+    labeled, reg = label_transfer( binaryimage, prior_binary, caudsd, propagate=propagate )
     if smoothing is None:
-        smoothing=np.sqrt( spmag )
+        smoothing=compute_smoothing_spacing( binaryimage )
     curvit = compute_curvature( binaryimage, smoothing=smoothing, distance_map = True )
     curvitr = ants.resample_image_to_target( curvit, labeled, interp_type='linear' )
     binaryimager = ants.resample_image_to_target( binaryimage, labeled, interp_type='nearestNeighbor' )
@@ -705,6 +699,122 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
         ventgrow = ants.resample_image_to_target( ventgrow, labeled, interp_type='nearestNeighbor' )
         labeled = labeled * ventgrow
     labeled[ curvitr == 0 ] = 0.0
+    # now apply the subdivision of the labels:
+    if subdivide > 0 :
+        for x in range(subdivide):
+            labeled = antspyt1w.subdivide_labels(labeled)
+    elif grid > 0:
+        gridder = tuple( [True] * labeled.dimension )
+        gg = ants.create_warped_grid( labeled*0, grid_step=grid, grid_width=1, grid_directions=gridder )
+        gg = gg * labeled
+        gg = ants.label_clusters( gg, 1 )
+        labeled = ants.iMath( labeled, 'PropagateLabelsThroughMask', gg, 1, 0)
+        if verbose:
+            print("end prop ") 
+    elif roipriorlabels :
+        print("roipriorlabels not implemented yet")
     descriptor = antspyt1w.map_intensity_to_dataframe( mydf, curvitr, labeled )
     descriptor = pd_to_wide( descriptor, column_values=['Mean','Volume'])
     return curvitr, labeled, descriptor
+
+def compute_smoothing_spacing(segmentation):
+    """
+    Computes a smoothing factor based on the spacing of the segmentation image.
+
+    Parameters:
+    - segmentation: ANTsPy image. The input segmentation image.
+
+    Returns:
+    - smoothing: float. The computed smoothing factor.
+    """
+    spmag = sum(sp ** 2 for sp in ants.get_spacing(segmentation))
+    return np.sqrt(spmag)
+
+def load_caudate_labels(prior_labels, prior_target_label):
+    """
+    Loads caudate region labels with specified configurations.
+
+    Parameters:
+    - prior_labels: list of int. Labels to load for caudate regions.
+    - prior_target_label: list of int. Labels to subdivide.
+
+    Returns:
+    - caud0: ANTsPy image. Loaded labels for the prior caudate.
+    - caudsd: ANTsPy image. Subdivided target caudate labels.
+    """
+    caud0 = load_labeled_caudate(label=prior_labels, subdivide=0, option='laterality')
+    caudsd = load_labeled_caudate(label=prior_target_label, subdivide=0, grid=0, option='laterality')
+    return caud0, caudsd
+
+def compute_curvature_and_resample(binary_image, labeled, smoothing):
+    """
+    Computes curvature and resamples the image to match the target.
+
+    Parameters:
+    - binary_image: ANTsPy image. Binary image of the target region.
+    - labeled: ANTsPy image. Labeled image for reference.
+    - smoothing: float. Smoothing factor for curvature computation.
+
+    Returns:
+    - curvit: ANTsPy image. Curvature image.
+    - curvitr: ANTsPy image. Resampled curvature image.
+    - binary_resampled: ANTsPy image. Resampled binary image.
+    """
+    curvit = compute_curvature(binary_image, smoothing=smoothing, distance_map=True)
+    curvitr = ants.resample_image_to_target(curvit, labeled, interp_type='linear')
+    binary_resampled = ants.resample_image_to_target(binary_image, labeled, interp_type='nearestNeighbor')
+    return curvit, curvitr, binary_resampled
+
+def cluster_image_gradient_prop(binary_image, n_clusters=2, sigma=0.25):
+    """
+    Clusters the gradient of a binary image.
+
+    Parameters:
+    - binary_image: ANTsPy image. Binary image of the target region.
+    - n_clusters: int. Number of clusters for k-means.
+    - sigma: float. Smoothing factor for gradient computation.
+
+    Returns:
+    - clustered_image: ANTsPy image. Image with clustered gradient.
+    """
+    imggk = cluster_image_gradient(binary_image, binary_image, n_clusters=n_clusters, sigma=sigma)
+    return ants.iMath(binary_image, "PropagateLabelsThroughMask", imggk, 200000, 0)
+
+def determine_dominant_cluster(clustered_image, labeled):
+    """
+    Determines the dominant cluster label based on overlaps with labeled regions.
+
+    Parameters:
+    - clustered_image: ANTsPy image. Clustered gradient image.
+    - labeled: ANTsPy image. Labeled reference image.
+
+    Returns:
+    - dominant_label: int. Label of the dominant cluster.
+    """
+    sum2 = (ants.threshold_image(clustered_image, 2, 2) * labeled).sum()
+    sum1 = (ants.threshold_image(clustered_image, 1, 1) * labeled).sum()
+    return 1 if sum1 > sum2 else 2
+
+def remove_spine_and_finalize_labels(curvitr, clustered_image, labeled, dominant_label):
+    """
+    Removes the spine region and propagates labels through the mask.
+
+    Parameters:
+    - curvitr: ANTsPy image. Resampled curvature image.
+    - clustered_image: ANTsPy image. Clustered gradient image.
+    - labeled: ANTsPy image. Labeled reference image.
+    - dominant_label: int. Dominant cluster label.
+
+    Returns:
+    - final_labeled: ANTsPy image. Final labeled image.
+    """
+    sidelabel_rm = remove_curvature_spine(curvitr, ants.threshold_image(clustered_image, dominant_label, dominant_label))
+    final_labeled = ants.iMath(
+        sidelabel_rm * ants.threshold_image(clustered_image, dominant_label, dominant_label),
+        "PropagateLabelsThroughMask",
+        labeled * ants.threshold_image(clustered_image, dominant_label, dominant_label),
+        200000,
+        0
+    )
+    return final_labeled
+
