@@ -277,7 +277,7 @@ def load_labeled_caudate(label=[1, 2], subdivide=0, grid=0, option='laterality',
         gg = ants.label_clusters( gg, 1 )
         if verbose:
             print("begin prop " + str( gg.max() )) 
-        seg = ants.iMath(seg, 'PropagateLabelsThroughMask', gg, 1, 0)
+        seg = ants.iMath(seg, 'PropagateLabelsThroughMask', gg, 1000, 0)
         if verbose:
             print("end prop ") 
     if verbose:
@@ -599,11 +599,13 @@ def remove_curvature_spine( curvature_image, segmentation_image ):
     - modified_segmentation_image: ANTsPy image with the spine region removed.
     """
     curvature_segmentation = ants.threshold_image(curvature_image + segmentation_image, "Otsu", 2 )
+    curvature_segmentation = ants.threshold_image( curvature_segmentation, 2, 2 )
+    curvature_segmentation = ants.iMath( curvature_segmentation, "MD", 1 )
     modified_image = segmentation_image.clone()  # Clone the input image to avoid modifying it in place
-    modified_image[curvature_segmentation == 2] = 0
+    modified_image[ curvature_segmentation == 1 ] = 0
     return modified_image
 
-def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_labels=[1, 2], prior_target_label=2,  subdivide=0, grid=0, smoothing=None, propagate=True, verbose=False):
+def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_labels=[1, 2], prior_target_label=2,  subdivide=0, grid=0, smoothing=None, propagate=True, priorparcellation=None, verbose=False):
     """
     Perform caudate curvature mapping on a T1-weighted MRI image using prior labels for anatomical guidance.
 
@@ -629,6 +631,8 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
         Number of subdivisions to apply to the prior target labels. Default is 0.
     grid : int, optional
         Number of grid divisions to apply to the prior target labels. Default is 0.
+    priorparcellation : ants.image in the same space as the priors
+        prior labels to map to the final parcellation default None.
     smoothing : float, optional
         Smoothing factor applied to the curvature calculation, where higher values 
         increase smoothness (default is the magnitude of the resolution of the image).
@@ -708,11 +712,13 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
         gg = ants.create_warped_grid( labeled*0, grid_step=grid, grid_width=1, grid_directions=gridder )
         gg = gg * labeled
         gg = ants.label_clusters( gg, 1 )
-        labeled = ants.iMath( labeled, 'PropagateLabelsThroughMask', gg, 1, 0)
+        labeled = ants.iMath( labeled, 'PropagateLabelsThroughMask', gg, 1000, 0)
         if verbose:
             print("end prop ") 
-    elif roipriorlabels :
-        print("roipriorlabels not implemented yet")
+    elif priorparcellation is not None:
+        priorsmapped = ants.apply_transforms( curvitr, priorparcellation, reg['fwdtransforms'], 
+            interpolator='nearestNeighbor' )
+        labeled = ants.iMath( labeled, 'PropagateLabelsThroughMask', priorsmapped, 200000, 0 )
     descriptor = antspyt1w.map_intensity_to_dataframe( mydf, curvitr, labeled )
     descriptor = pd_to_wide( descriptor, column_values=['Mean','Volume'])
     return curvitr, labeled, descriptor
