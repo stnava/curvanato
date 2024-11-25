@@ -6,8 +6,8 @@ import re
 import os  # For checking file existence
 import pandas as pd
 import numpy as np
-fn='.//bids/sub-RC4103/ses-1/anat/sub-RC4103_ses-1_T1w.nii.gz'
 fn='.//bids/sub-RC4111/ses-1/anat/sub-RC4111_ses-1_T1w.nii.gz' # easy
+fn='.//bids/sub-RC4103/ses-1/anat/sub-RC4103_ses-1_T1w.nii.gz'
 fn='./bids//sub-RC4110/ses-2/anat/sub-RC4110_ses-2_T1w.nii.gz'
 if os.path.exists(fn):
     t1=ants.image_read( fn )
@@ -39,16 +39,6 @@ if leftside:
     for j in range(2):
         ants.image_write( xx[j], ccfn[j] )
     xx[2].to_csv( ccfn[2] )
-
-labeled=xx[1]
-curvitr=xx[0]
-mydf = curvanato.make_label_dataframe( labeled )
-descriptor = antspyt1w.map_intensity_to_dataframe( mydf, curvitr, labeled )
-descriptor = curvanato.compute_geom_per_label( labeled, descriptor, curvanato.flatness, 'Flatness')
-gdesc = ants.label_geometry_measures( xx[1] )
-geos = ['Mean', 'VolumeInMillimeters', 'SurfaceAreaInMillimetersSquared', 'Eccentricity', 'Elongation','Flatness']
-combined = pd.concat([descriptor, gdesc], ignore_index=True)
-qq = curvanato.pd_to_wide( combined, column_values=geos)
 
 otherside=True
 if otherside:   

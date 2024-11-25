@@ -727,7 +727,7 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
     descriptor = compute_geom_per_label( labeled, descriptor, flatness, 'Flatness')
     gdesc = ants.label_geometry_measures( labeled )
     geos = ['Mean', 'VolumeInMillimeters', 'SurfaceAreaInMillimetersSquared', 'Eccentricity', 'Elongation','Flatness']
-    descriptor = pd.concat([descriptor, gdesc], ignore_index=True)
+    descriptor = pd.concat([descriptor.reset_index(drop=True), gdesc.reset_index(drop=True)], axis=1)
     descriptor = pd_to_wide( descriptor, column_values=geos)
     descriptor = descriptor.loc[:, ~descriptor.columns.str.startswith('nan')]
     return curvitr, labeled, descriptor
