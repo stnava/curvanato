@@ -130,13 +130,14 @@ def compute_distance_map(binary_image):
     binary_clone = binary_image.clone()
 
     # Compute the Maurer distance transform
-    distance_transform = ants.iMath(binary_image, "MaurerDistance")
+    distance_transform = ants.iMath(binary_image, "MaurerDistance") * (-1.0 )
+    distance_transform[binary_clone == 1] += 1.0
 
     # Assign negative distances inside the binary region
-    signed_distance = distance_transform * binary_image
-    signed_distance[binary_clone == 1] *= -1.0
+#    signed_distance = distance_transform * binary_image
+#    signed_distance[binary_clone == 1] *= -1.0
 
-    return signed_distance
+    return distance_transform
 
 def make_label_dataframe(label_image):
     """
@@ -732,6 +733,66 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
     descriptor = descriptor.loc[:, ~descriptor.columns.str.startswith('nan')]
     return curvitr, labeled, descriptor
 
+def shape_split_thickness(two_label_segmentation, g=1, w=2, verbose=False):
+    """
+    Compute thickness-based shape splitting using the Kelly Kapowski algorithm.
+
+    This function takes a two-label segmentation image and computes the thickness map 
+    between two regions, typically representing gray matter (GM) and white matter (WM), 
+    using the `ants.kelly_kapowski` function.
+
+    Parameters
+    ----------
+    two_label_segmentation : ants.ANTsImage
+        A segmentation image with two distinct labels, typically representing different 
+        anatomical regions (e.g., gray matter and white matter).
+    
+    g : int, optional
+        The label representing the "g" region, typically gray matter. Default is 1.
+    
+    w : int, optional
+        The label representing the "w" region, typically white matter. Default is 2.
+    
+    verbose : bool, optional
+        If True, additional information about the process will be printed. Default is False.
+
+    Returns
+    -------
+    ants.ANTsImage
+        An ANTsImage object representing the computed thickness map between the specified 
+        regions.
+
+    Notes
+    -----
+    - The Kelly Kapowski algorithm computes a Laplacian thickness map between regions.
+    - The `two_label_segmentation` input must be a segmentation with exactly two distinct labels.
+
+    Example
+    -------
+    >>> import ants
+    >>> import curvanato
+    >>> two_label_segmentation = ants.image_read("segmentation.nii.gz")
+    >>> thickness_map = shape_split_thickness(two_label_segmentation, g=1, w=2, verbose=True)
+    >>> ants.plot(thickness_map)
+
+    """
+    gmimg = ants.threshold_image(two_label_segmentation, g, g)
+    wmimg = ants.threshold_image(two_label_segmentation, w, w)
+    myverb = 0
+    if verbose:
+        myverb=1
+    mykk = ants.kelly_kapowski(
+        two_label_segmentation,
+        g=gmimg,
+        w=wmimg,
+        its=45,
+        r=0.025,
+        m=1.5,
+        gm_label=g,
+        wm_label=w,
+        verbose=myverb
+    )
+    return mykk
 
 def compute_geom_per_label(img, dataframe, geom_fn, geom_name):
     """

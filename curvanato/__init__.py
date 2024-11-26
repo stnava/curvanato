@@ -24,3 +24,5 @@ from .curvature import cluster_image_gradient_prop
 from .curvature import determine_dominant_cluster
 from .curvature import remove_spine_and_finalize_labels
 from .curvature import compute_geom_per_label
+from .curvature import shape_split_thickness
+
