@@ -137,7 +137,7 @@ def compute_distance_map(binary_image):
 #    signed_distance = distance_transform * binary_image
 #    signed_distance[binary_clone == 1] *= -1.0
 
-    return distance_transform
+    return distance_transform * binary_clone
 
 def make_label_dataframe(label_image):
     """

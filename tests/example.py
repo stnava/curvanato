@@ -17,22 +17,32 @@ if os.path.exists(fn):
         hoa = antspynet.harvard_oxford_atlas_labeling(t1, verbose=True)['segmentation_image']
         ants.image_write( hoa, hoafn)
     hoa = ants.image_read( hoafn )
+    citfn = re.sub( ".nii.gz", "_cit168.nii.gz" , fn )
+    if not os.path.exists(citfn):
+        deeek
+        t1b = antspynet.brain_extraction( t1, modality="t1threetissue" )['segmentation_image'].threshold_image(1,1)
+        t1r = ants.rank_intensity( t1 * t1b )
+#        antskm = ants.kmeans_segmentation(t1r, 2, kmask=t1b, mrf=0.1)['']
+        cit = antspyt1w.deep_cit168( t1r, verbose=True)['segmentation']
+        ants.image_write( cit, citfn)
+    cit = ants.image_read( citfn )
 
-
+###################################################################################
 tcaud=curvanato.load_labeled_caudate( option='hmt', binarize=False, label=[1,3,5] )
 vlab=None
 leftside=True
 gr=0
 subd=0
 if leftside:
+    ctype='cit'
     ccfn = [
-        re.sub( ".nii.gz", "_caudLkappa.nii.gz" , fn ), 
-        re.sub( ".nii.gz", "_caudL.nii.gz" , fn ),
-        re.sub( ".nii.gz", "_caudLkappa.csv" , fn ) ]
+        re.sub( ".nii.gz", "_"+ctype+"Lkappa.nii.gz" , fn ), 
+        re.sub( ".nii.gz", "_"+ctype+"L.nii.gz" , fn ),
+        re.sub( ".nii.gz", "_"+ctype+"Lkappa.csv" , fn ) ]
     print("Begin " + fn + " caud kap")
     pcaud=[1,2]
     plabs=[2]
-    xx = curvanato.t1w_caudcurv( t1, hoa, target_label=9, ventricle_label=vlab, 
+    xx = curvanato.t1w_caudcurv( t1, cit, target_label=2, ventricle_label=vlab, 
         prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr,
         priorparcellation=tcaud, 
         verbose=True )
