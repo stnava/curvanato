@@ -31,6 +31,8 @@ if os.path.exists(fn):
 ###################################################################################
 ###################################################################################
 ###################################################################################
+fn="/tmp/PPMI-100018-20210202-T1wHierarchical-1497578-deep_cit168lab.nii.gz"
+cit=ants.image_read(fn)
 ctype='cit'
 tcaudL=curvanato.load_labeled_caudate( option='hmt', binarize=False, label=[1,3,5] )
 tcaudR=curvanato.load_labeled_caudate( option='hmt', binarize=False, label=[2,4,6] )
@@ -63,14 +65,16 @@ if leftside:
     ccfn = [
         re.sub( ".nii.gz", "_"+ctype+"Lkappa.nii.gz" , fn ), 
         re.sub( ".nii.gz", "_"+ctype+"L.nii.gz" , fn ),
-        re.sub( ".nii.gz", "_"+ctype+"Lkappa.csv" , fn ) ]
+        re.sub( ".nii.gz", "_"+ctype+"Lkappa.csv" , fn ),
+        re.sub( ".nii.gz", "_"+ctype+"Lkappa.png" , fn ) ]
     print("Begin " + fn + " caud kap")
     pcaud=[1,2]
     plabs=[2]
     xx = curvanato.t1w_caudcurv( cit, target_label=2, ventricle_label=vlab, 
         prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr,
-        priorparcellation=tcaudL,  plot=True,
+        priorparcellation=tcaudL,  plot=True, searchrange=0,
         verbose=True )
+    ants.plot( xx[0], xx[1], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[3] )
     for j in range(2):
         ants.image_write( xx[j], ccfn[j] )
     xx[2].to_csv( ccfn[2] )

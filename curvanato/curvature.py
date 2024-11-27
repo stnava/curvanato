@@ -688,7 +688,7 @@ def remove_curvature_spine( curvature_image, segmentation_image, dilation=0 ):
     modified_image[ curvature_segmentation == 1 ] = 0
     return modified_image
 
-def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labels=[1, 2], prior_target_label=2,  subdivide=0, grid=0, smoothing=None, propagate=True, priorparcellation=None, plot=False, verbose=False):
+def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labels=[1, 2], prior_target_label=2,  subdivide=0, grid=0, smoothing=None, propagate=True, priorparcellation=None, searchrange=25, plot=False, verbose=False):
     """
     Perform caudate curvature mapping on a caudate segmentation using prior labels for anatomical guidance.
 
@@ -718,6 +718,7 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
         Smoothing factor applied to the curvature calculation, where higher values 
         increase smoothness (default is the magnitude of the resolution of the image).
     propagate : boolean
+    searchrange : number of kmeans searches default 25; set to zero to just use image registration
     plot : boolean
     verbose : boolean
 
@@ -787,11 +788,11 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
     if verbose:
         print("curv fin")
     binaryimager = ants.resample_image_to_target( binaryimage, labeled, interp_type='nearestNeighbor' )
-    if True:
+    if searchrange > 0 :
         bestsum=0
         bestvol=9.e14
         labeledTemp = remove_curvature_spine( curvitr, labeled )
-        for myrandstate in list(range(25)):
+        for myrandstate in list(range(searchrange)):
             isbest=False
             imggk=cluster_image_gradient( binaryimager, binaryimager, n_clusters=2, sigma=smoothing, random_state=myrandstate) * binaryimager 
             #, spatial_prior = labeled ) * binaryimager 

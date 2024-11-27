@@ -62,6 +62,7 @@ for fn in list(mydf['filename']):
             ants.plot( xx[0], xx[1], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[3] )
             for j in range(2):
                 ants.image_write( xx[j], ccfn[j] )
+            xx[2]['filename']=fn
             xx[2].to_csv( ccfn[2] )
         ######
         mytl=2
@@ -81,6 +82,7 @@ for fn in list(mydf['filename']):
             ants.plot( xx[0], xx[1], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[3] )
             for j in range(2):
                 ants.image_write( xx[j], ccfn[j] )
+            xx[2]['filename']=fn
             xx[2].to_csv( ccfn[2] )
 
 
