@@ -43,7 +43,8 @@ if otherside:
     ccfn = [
         re.sub( ".nii.gz", "_"+ctype+"Rkappa.nii.gz" , fn ), 
         re.sub( ".nii.gz", "_"+ctype+"R.nii.gz" , fn ),
-        re.sub( ".nii.gz", "_"+ctype+"Rkappa.csv" , fn ) ]
+        re.sub( ".nii.gz", "_"+ctype+"Rkappa.csv" , fn ),
+        re.sub( ".nii.gz", "_"+ctype+"Rkappa.png" , fn ) ]
     pcaud=[3,4]
     plabs=[4]
     if ctype == 'cit':
@@ -52,6 +53,7 @@ if otherside:
         prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr,
         priorparcellation=tcaudR,  plot=True,
         verbose=True )
+    ants.plot( xx[0], xx[1], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[3] )
     for j in range(2):
         ants.image_write( xx[j], ccfn[j] )
     xx[2].to_csv( ccfn[2] )

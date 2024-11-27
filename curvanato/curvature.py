@@ -791,7 +791,7 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
         bestsum=0
         bestvol=9.e14
         labeledTemp = remove_curvature_spine( curvitr, labeled )
-        for myrandstate in list(range(10)):
+        for myrandstate in list(range(25)):
             isbest=False
             imggk=cluster_image_gradient( binaryimager, binaryimager, n_clusters=2, sigma=smoothing, random_state=myrandstate) * binaryimager 
             #, spatial_prior = labeled ) * binaryimager 
