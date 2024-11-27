@@ -21,6 +21,7 @@ from .curvature import compute_smoothing_spacing
 from .curvature import load_caudate_labels
 from .curvature import compute_curvature_and_resample
 from .curvature import cluster_image_gradient_prop
+from .curvature import cluster_image_gradient_prior
 from .curvature import determine_dominant_cluster
 from .curvature import remove_spine_and_finalize_labels
 from .curvature import compute_geom_per_label

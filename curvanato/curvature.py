@@ -519,13 +519,86 @@ def cluster_image_gradient(image, binary_image, n_clusters=2, sigma=0.5, random_
     # Convert the label array back to an ANTs image
     clustered_image = ants.from_numpy(label_image_np, origin=image.origin, spacing=image.spacing)
     clustered_image = ants.copy_image_info( image, clustered_image )
-    # BUG: unclear why the line below does not work ...
-    # clustered_image = ants.iMath( binary_image.clone(), "PropagateLabelsThroughMask", 
-    #    clustered_image.clone(), 200000, 0 )
     return clustered_image
 
 
-def label_transfer(target_binary, prior_binary, prior_label, propagate=True, jacobian=False ):
+def cluster_image_gradient_prior(image, binary_image, prior_label_image, n_clusters=2, sigma=0.5, random_state=None):
+    """
+    Computes the gradient of an image and performs k-means clustering on the gradient,
+    initializing cluster centers based on a prior label image.
+
+    Parameters:
+    - image: ANTsPy image. Input image to process. Could be a distance map.
+    - binary_image: ANTsPy image. Input binary mask image.
+    - prior_label_image: ANTsPy image. Label image with unique labels greater than zero for initialization.
+    - n_clusters: int. Number of clusters for k-means. Must match the number of unique labels in prior_label_image.
+    - sigma: float. Physical coordinate sigma for smoothing the gradient.
+    - random_state: int or None. Random state for reproducibility.
+
+    Returns:
+    - clustered_image: ANTsPy image with cluster labels.
+    """
+    import ants
+    import numpy as np
+    from sklearn.cluster import KMeans
+
+    # Compute the gradient of the image
+    gradient = image_gradient(image, sigma=sigma)
+    
+    # Extract gradient components as NumPy arrays
+    gradient_x = gradient['x'].numpy()
+    gradient_y = gradient['y'].numpy()
+    if image.dimension == 3:
+        gradient_z = gradient['z'].numpy()
+    
+    # Stack gradient components into a feature matrix
+    if image.dimension == 2:
+        feature_matrix = np.stack([gradient_x.ravel(), gradient_y.ravel()], axis=1)
+    elif image.dimension == 3:
+        feature_matrix = np.stack([gradient_x.ravel(), gradient_y.ravel(), gradient_z.ravel()], axis=1)
+
+    # Mask the feature matrix using the binary image
+    binary_mask = binary_image.numpy() > 0
+    feature_matrix = feature_matrix[binary_mask.ravel()]
+    
+    # Compute cluster initialization centers from the prior label image
+    prior_labels = prior_label_image.numpy()
+    if prior_labels.shape != binary_mask.shape:
+        raise ValueError("Shape of prior_label_image must match the binary_image and input image.")
+    
+    unique_labels = np.unique(prior_labels[prior_labels > 0])
+    if len(unique_labels) != n_clusters:
+        raise ValueError(f"Number of unique labels in prior_label_image ({len(unique_labels)}) "
+                         f"does not match n_clusters ({n_clusters}).")
+    
+    centers = []
+    binary_indices = np.where(binary_mask.ravel())[0]  # Get indices of the binary mask
+    for label in unique_labels:
+        # Get indices corresponding to the current label within the binary mask
+        label_indices = binary_indices[prior_labels.ravel()[binary_indices] == label]
+        if len(label_indices) > 0:
+            label_coords = feature_matrix[np.isin(np.arange(len(feature_matrix)), label_indices)]
+            # Compute the mean coordinate for this label
+            centers.append(np.mean(label_coords, axis=0))
+        else:
+            raise ValueError(f"No valid data found in prior_label_image for label {label}.")
+    centers = np.array(centers)
+
+    # Perform k-means clustering with initialized centers
+    kmeans = KMeans(n_clusters=n_clusters, init=centers, random_state=random_state, n_init=1)
+    labels = kmeans.fit_predict(feature_matrix)
+    
+    # Create a full label image, filling in the background with zeros
+    full_label_image_np = np.zeros_like(prior_labels, dtype=int)
+    full_label_image_np[binary_mask] = labels + 1  # Add 1 to ensure labels are positive
+    
+    # Convert the label array back to an ANTs image
+    clustered_image = ants.from_numpy(full_label_image_np, origin=image.origin, spacing=image.spacing)
+    clustered_image = ants.copy_image_info(image, clustered_image)
+    return clustered_image
+
+
+def label_transfer(target_binary, prior_binary, prior_label, propagate=True, jacobian=False, regtx="antsRegistrationSyNQuickRepro[s]", reg=None ):
     """
     Perform label transfer from a prior image to a target image using deformable image registration.
 
@@ -544,6 +617,8 @@ def label_transfer(target_binary, prior_binary, prior_label, propagate=True, jac
     propagate: boolean
     jacobian: boolean
         will return the jacobian of the registration to the prior space
+    regtx : type of transform
+    reg : optional existing registration result default None
 
     Returns:
     -------
@@ -574,13 +649,17 @@ def label_transfer(target_binary, prior_binary, prior_label, propagate=True, jac
     - `ants.iMath`: For image-based mathematical operations.
     """
     target_binary_c = ants.crop_image( target_binary, ants.iMath( target_binary, "MD", 4 ) )
-    bindist = compute_distance_map( target_binary_c )
+#    bindist = compute_distance_map( target_binary_c )
+#    priork = compute_distance_map( prior_binary )
+    smoothing=compute_smoothing_spacing( target_binary )
+    bindist = compute_curvature( target_binary_c, smoothing=smoothing, distance_map = True  ) + target_binary_c
+    priork = compute_curvature( prior_binary, smoothing=smoothing, distance_map = True  ) + prior_binary
     if jacobian:
-        croppedTdog = ants.crop_image( prior_binary, ants.iMath( prior_binary, "MD", 10 ) )
-        croppedTdogD = compute_distance_map( croppedTdog )
-        reg = ants.registration( croppedTdogD, bindist, 'SyNCC')
+        croppedTdog = ants.crop_image( priork, ants.iMath( prior_binary, "MD", 10 ) )
+        reg = ants.registration( croppedTdog, bindist, regtx )
         return ants.create_jacobian_determinant_image( prior_binary, reg['fwdtransforms'][0],1 )
-    reg = ants.registration(bindist, compute_distance_map( prior_binary ), 'SyNCC')
+    if reg is None:
+        reg = ants.registration(bindist, priork, regtx )
     labeled = ants.apply_transforms(target_binary_c, prior_label, reg['fwdtransforms'], 
         interpolator='nearestNeighbor' )
     if propagate:
@@ -608,7 +687,7 @@ def remove_curvature_spine( curvature_image, segmentation_image, dilation=0 ):
     modified_image[ curvature_segmentation == 1 ] = 0
     return modified_image
 
-def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_labels=[1, 2], prior_target_label=2,  subdivide=0, grid=0, smoothing=None, propagate=True, priorparcellation=None, verbose=False):
+def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_labels=[1, 2], prior_target_label=2,  subdivide=0, grid=0, smoothing=None, propagate=True, priorparcellation=None, plot=False, verbose=False):
     """
     Perform caudate curvature mapping on a T1-weighted MRI image using prior labels for anatomical guidance.
 
@@ -640,6 +719,7 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
         Smoothing factor applied to the curvature calculation, where higher values 
         increase smoothness (default is the magnitude of the resolution of the image).
     propagate : boolean
+    plot : boolean
     verbose : boolean
 
     Returns:
@@ -671,35 +751,85 @@ def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_l
     - `label_transfer`: Transfers labels between binary images.
 
     """
+    if verbose:
+        print("Begin")
     labeled = segmentation * 0.0
     curved = segmentation * 0.0
     binaryimage = ants.threshold_image(segmentation, target_label, target_label).iMath("FillHoles").iMath("GetLargestComponent")
     caud0 = load_labeled_caudate(label=prior_labels, 
-        subdivide=0, grid=0, option='laterality')
+        subdivide=0, grid=0, option='laterality', binarize=True)
     caudsd = load_labeled_caudate(label=prior_target_label, 
-        subdivide=0, grid=0, option='laterality' )
+        subdivide=0, grid=0, option='laterality', binarize=True )
+    # caudlat = load_labeled_caudate(label=prior_target_label, 
+    #    subdivide=0, grid=0, option='laterality', binarize=False )
+    if verbose:
+        print("loaded")
     prior_binary = caud0.clone() # ants.mask_image(caud0, caud0, prior_labels, binarize=True)
     propagate=True
-    labeled, reg = label_transfer( binaryimage, prior_binary, caudsd, propagate=propagate )
+    if verbose:
+        print("reg")
+    if plot:
+        ants.plot( binaryimage, binaryimage, crop=True, axis=2 )
+        ants.plot( prior_binary, prior_binary, crop=True, axis=2 )
+    regtx="antsRegistrationSyNQuickRepro[s]"
+    labeled, reg = label_transfer( binaryimage, prior_binary, caudsd, propagate=propagate, regtx=regtx )
+    if verbose:
+        print("reg fin ")
+    if plot:
+        ants.plot( binaryimage, labeled, axis=2, crop=True )
+        # ants.plot( binaryimage, labeledlat, axis=2, crop=True )
+    # labeledlat, reg = label_transfer( binaryimage, prior_binary, caudlat, propagate=propagate, regtx='SyN',reg=reg)
+    if verbose:
+        print(" ... now curv")
     if smoothing is None:
         smoothing=compute_smoothing_spacing( binaryimage )
     curvit = compute_curvature( binaryimage, smoothing=smoothing, distance_map = True )
     curvitr = ants.resample_image_to_target( curvit, labeled, interp_type='linear' )
+    if verbose:
+        print("curv fin")
     binaryimager = ants.resample_image_to_target( binaryimage, labeled, interp_type='nearestNeighbor' )
-    imgd = compute_distance_map( binaryimager )
-    imggk=cluster_image_gradient( binaryimager, binaryimager, n_clusters=2, sigma=0.25) * binaryimager 
-    imggk = ants.iMath( binaryimager, "PropagateLabelsThroughMask", imggk, 200000, 0 )
-    sum2 = (ants.threshold_image(imggk,2,2) * labeled ).sum()
-    sum1 = (ants.threshold_image(imggk,1,1) * labeled ).sum()
-    if ( sum1 > sum2 ) :
-        kmeansLabel=1 
-    else: 
-        kmeansLabel=2
-    sidelabelRm = remove_curvature_spine( curvitr, 
-        ants.threshold_image(imggk,kmeansLabel,kmeansLabel) )
-    labeled = ants.iMath( sidelabelRm * ants.threshold_image(imggk,kmeansLabel,kmeansLabel), 
-            "PropagateLabelsThroughMask", 
-            labeled * ants.threshold_image(imggk,kmeansLabel,kmeansLabel), 200000, 0 )
+    if True:
+        bestsum=0
+        bestvol=9.e14
+        labeledTemp = remove_curvature_spine( curvitr, labeled )
+        for myrandstate in list(range(10)):
+            isbest=False
+            imggk=cluster_image_gradient( binaryimager, binaryimager, n_clusters=2, sigma=smoothing, random_state=myrandstate) * binaryimager 
+            #, spatial_prior = labeled ) * binaryimager 
+            imggk = ants.iMath( binaryimager, "PropagateLabelsThroughMask", imggk, 200000, 0 )
+            sum2 = ants.label_overlap_measures(ants.threshold_image(imggk,2,2), labeledTemp) .MeanOverlap[0]
+            sum1 = ants.label_overlap_measures(ants.threshold_image(imggk,1,1), labeledTemp) .MeanOverlap[0]
+            voldiff = abs( ants.threshold_image(imggk,2,2).sum() - ants.threshold_image(imggk,1,1).sum() )
+            if ( sum1 > sum2 and sum1 > bestsum and voldiff < bestvol ) :
+                if verbose:
+                    print("best " + str(myrandstate) + " diff " + str(voldiff) )
+                isbest=True
+                bestsum = sum1
+                kmeansLabel=1 
+                imggkbest = imggk.clone()
+                bestvol = voldiff
+            elif ( sum2 > bestsum and voldiff < bestvol ): 
+                isbest=True
+                if verbose:
+                    print("best " + str(myrandstate) + " diff " + str(voldiff) )
+                bestsum = sum2
+                kmeansLabel=2
+                imggkbest = imggk.clone()
+                bestvol = voldiff
+            if plot and isbest :
+                ants.plot( binaryimager, ants.threshold_image(imggk,kmeansLabel,kmeansLabel), axis=2, crop=True )
+        imggk = imggkbest
+        labeled = remove_curvature_spine( curvitr, 
+            ants.threshold_image(imggk,kmeansLabel,kmeansLabel) )
+    else:
+        labeled = remove_curvature_spine( curvitr, labeled )
+    if plot :
+        ants.plot( binaryimager, labeled, axis=2, crop=True )
+#    labeled = ants.iMath( sidelabelRm * ants.threshold_image(imggk,kmeansLabel,kmeansLabel), 
+#            "PropagateLabelsThroughMask", 
+#            labeled * ants.threshold_image(imggk,kmeansLabel,kmeansLabel), 200000, 0 )
+#    if plot:
+#        ants.plot( binaryimager, labeled, axis=2, crop=True )
     if ventricle_label is not None:
         ventgrow = ants.threshold_image( segmentation, ventricle_label, ventricle_label ).iMath("MD",1)
         ventgrow = ants.resample_image_to_target( ventgrow, labeled, interp_type='nearestNeighbor' )
