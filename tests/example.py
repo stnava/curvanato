@@ -72,7 +72,7 @@ if leftside:
     plabs=[2]
     xx = curvanato.t1w_caudcurv( cit, target_label=2, ventricle_label=vlab, 
         prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr,
-        priorparcellation=tcaudL,  plot=True, searchrange=0,
+        priorparcellation=tcaudL,  plot=True, searchrange=20,
         verbose=True )
     ants.plot( xx[0], xx[1], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[3] )
     for j in range(2):

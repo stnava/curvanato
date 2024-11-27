@@ -772,6 +772,7 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
         ants.plot( binaryimage, binaryimage, crop=True, axis=2 )
         ants.plot( prior_binary, prior_binary, crop=True, axis=2 )
     regtx="antsRegistrationSyNQuickRepro[s]"
+    regtx='SyN'
     labeled, reg = label_transfer( binaryimage, prior_binary, caudsd, propagate=propagate, regtx=regtx )
     if verbose:
         print("reg fin ")
@@ -794,7 +795,7 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
         labeledTemp = remove_curvature_spine( curvitr, labeled )
         for myrandstate in list(range(searchrange)):
             isbest=False
-            imggk=cluster_image_gradient( binaryimager, binaryimager, n_clusters=2, sigma=smoothing, random_state=myrandstate) * binaryimager 
+            imggk=cluster_image_gradient( binaryimager, binaryimager, n_clusters=2, sigma=0.0, random_state=myrandstate) * binaryimager 
             #, spatial_prior = labeled ) * binaryimager 
             imggk = ants.iMath( binaryimager, "PropagateLabelsThroughMask", imggk, 200000, 0 )
             sum2 = ants.label_overlap_measures(ants.threshold_image(imggk,2,2), labeledTemp) .MeanOverlap[0]

@@ -26,6 +26,8 @@ if os.path.exists(fn):
         ants.image_write( cit, citfn)
     cit = ants.image_read( citfn )
 
+citfn="/tmp/PPMI-100018-20210202-T1wHierarchical-1497578-deep_cit168lab.nii.gz"
+cit = ants.image_read( citfn )
 ##########################
 segmentation = cit.clone()
 prior_labels=[1,2]
