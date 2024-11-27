@@ -56,6 +56,7 @@ for fn in list(mydf['filename']):
             prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr,
             priorparcellation=tcaudR,  plot=False,
             verbose=True )
+        ass
         for j in range(2):
             ants.image_write( xx[j], ccfn[j] )
         xx[2].to_csv( ccfn[2] )
