@@ -687,20 +687,18 @@ def remove_curvature_spine( curvature_image, segmentation_image, dilation=0 ):
     modified_image[ curvature_segmentation == 1 ] = 0
     return modified_image
 
-def t1w_caudcurv(t1, segmentation, target_label=9, ventricle_label=None, prior_labels=[1, 2], prior_target_label=2,  subdivide=0, grid=0, smoothing=None, propagate=True, priorparcellation=None, plot=False, verbose=False):
+def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labels=[1, 2], prior_target_label=2,  subdivide=0, grid=0, smoothing=None, propagate=True, priorparcellation=None, plot=False, verbose=False):
     """
-    Perform caudate curvature mapping on a T1-weighted MRI image using prior labels for anatomical guidance.
+    Perform caudate curvature mapping on a caudate segmentation using prior labels for anatomical guidance.
 
-    This function utilizes the Harvard-Oxford Atlas for initial labeling, processes specific target labels, 
+    This function utilizes an initial labeling, processes specific target labels, 
     and transfers prior anatomical labels to compute curvature-related features of the caudate. The process 
     involves binary masking, curvature estimation, and label transfer using predefined or subdivided priors.
 
     Parameters:
     ----------
-    t1 : ants.ANTsImage
-        The T1-weighted MRI image to process.
     segmentation : ants.ANTsImage
-        The segmentation associated with the T1
+        The segmentation to process
     target_label : int, optional
         The target label to isolate and process in the atlas segmentation. Default is 9.
     ventricle_label : int or None, optional

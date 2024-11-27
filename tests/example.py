@@ -7,8 +7,8 @@ import os  # For checking file existence
 import pandas as pd
 import numpy as np
 fn='.//bids/sub-RC4111/ses-1/anat/sub-RC4111_ses-1_T1w.nii.gz' # easy
-fn='./bids//sub-RC4110/ses-2/anat/sub-RC4110_ses-2_T1w.nii.gz'
 fn='.//bids/sub-RC4103/ses-1/anat/sub-RC4103_ses-1_T1w.nii.gz'
+fn='./bids//sub-RC4110/ses-2/anat/sub-RC4110_ses-2_T1w.nii.gz'
 if os.path.exists(fn):
     t1=ants.image_read( fn )
     t1=ants.resample_image( t1, [0.5, 0.5, 0.5], use_voxels=False, interp_type=0 )
@@ -47,7 +47,7 @@ if otherside:
     plabs=[4]
     if ctype == 'cit':
         mytl=18
-    xx = curvanato.t1w_caudcurv( t1, cit, target_label=mytl, ventricle_label=vlab, 
+    xx = curvanato.t1w_caudcurv(  cit, target_label=mytl, ventricle_label=vlab, 
         prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr,
         priorparcellation=tcaudR,  plot=True,
         verbose=True )
@@ -64,7 +64,7 @@ if leftside:
     print("Begin " + fn + " caud kap")
     pcaud=[1,2]
     plabs=[2]
-    xx = curvanato.t1w_caudcurv( t1, cit, target_label=2, ventricle_label=vlab, 
+    xx = curvanato.t1w_caudcurv( cit, target_label=2, ventricle_label=vlab, 
         prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr,
         priorparcellation=tcaudL,  plot=True,
         verbose=True )
