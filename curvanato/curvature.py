@@ -851,6 +851,9 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
             interpolator='nearestNeighbor' )
         labeled = ants.iMath( ants.threshold_image(labeled,1,9.e9), 
             'PropagateLabelsThroughMask', priorsmapped, 200000, 0 )
+    if verbose:
+        print( np.unique( labeled.numpy() ) )
+        print( str( labeled.sum()  )  )
     mydf = make_label_dataframe( labeled )
     descriptor = antspyt1w.map_intensity_to_dataframe( mydf, curvitr, labeled )
     descriptor = compute_geom_per_label( labeled, descriptor, flatness, 'Flatness')

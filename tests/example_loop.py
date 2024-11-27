@@ -6,8 +6,7 @@ import re
 import os  # For checking file existence
 import pandas as pd
 import numpy as np
-
-
+os.environ["ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS"] = "32"
 def construct_path(filename, root_dir='./processedCSVSRFIRST/'):
     """
     Construct the path to each file of type "*deep_cit168lab.nii.gz"
@@ -30,12 +29,6 @@ def construct_path(filename, root_dir='./processedCSVSRFIRST/'):
         return path
     else:
         return None
-
-
-
-# Example usage:
-filename = "PPMI-100018-20210202-T1w-1497578"
-print(path)
 
 ctype='cit'
 tcaudL=curvanato.load_labeled_caudate( option='hmt', binarize=False, label=[1,3,5] )
