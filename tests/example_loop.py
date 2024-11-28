@@ -43,46 +43,53 @@ ct=0
 for fn in list(mydf['filename']):
     path = construct_path(fn)
     if path is not None:
-        print(  path )
+        print( path )
         cit = ants.image_read( path )
         ccfn = [
-            re.sub( ".nii.gz", "_"+ctype+"Rkappa.nii.gz" , path ), 
+            re.sub( ".nii.gz", "_"+ctype+"Rkappa.nii.gz" , path ),
             re.sub( ".nii.gz", "_"+ctype+"R.nii.gz" , path ),
+            re.sub( ".nii.gz", "_"+ctype+"Rthk.nii.gz" , path ),
             re.sub( ".nii.gz", "_"+ctype+"Rkappa.csv" , path ),
-            re.sub( ".nii.gz", "_"+ctype+"Rkappa.png" , path ) ]
+            re.sub( ".nii.gz", "_"+ctype+"Rkappa.png" , path ),
+            re.sub( ".nii.gz", "_"+ctype+"Rthk.png" , path ) ]
         pcaud=[3,4]
         plabs=[4]
         if ctype == 'cit':
             mytl=18
-        if not os.path.isfile(ccfn[3]):
+        if not os.path.isfile(ccfn[5]):
             xx = curvanato.t1w_caudcurv( cit, target_label=mytl, ventricle_label=vlab, 
                 prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr,
                 priorparcellation=tcaudR,  plot=False,
                 verbose=True )
-            ants.plot( xx[0], xx[1], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[3] )
-            for j in range(2):
+            ants.plot( xx[0], xx[0], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[4] )
+            ants.plot( xx[0], xx[2], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[5] )
+            for j in range(3):
                 ants.image_write( xx[j], ccfn[j] )
-            xx[2]['filename']=fn
-            xx[2].to_csv( ccfn[2] )
+            xx[3]['filename']=fn
+            xx[3].to_csv( ccfn[3] )
         ######
         mytl=2
         ccfn = [
             re.sub( ".nii.gz", "_"+ctype+"Lkappa.nii.gz" , path ), 
             re.sub( ".nii.gz", "_"+ctype+"L.nii.gz" , path ),
+            re.sub( ".nii.gz", "_"+ctype+"Lthk.nii.gz" , path ),
             re.sub( ".nii.gz", "_"+ctype+"Lkappa.csv" , path ),
-            re.sub( ".nii.gz", "_"+ctype+"Lkappa.png" , path ) ]
+            re.sub( ".nii.gz", "_"+ctype+"Lkappa.png" , path ),
+            re.sub( ".nii.gz", "_"+ctype+"Lthk.png" , path ) ]
         print("Begin " + fn + " caud kap")
         pcaud=[1,2]
         plabs=[2]
-        if not os.path.isfile(ccfn[3]):
+        if not os.path.isfile(ccfn[5]):
             xx = curvanato.t1w_caudcurv( cit, target_label=2, ventricle_label=vlab, 
                 prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr,
                 priorparcellation=tcaudL,  plot=True,
                 verbose=True )
-            ants.plot( xx[0], xx[1], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[3] )
-            for j in range(2):
+            ants.plot( xx[0], xx[0], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[4] )
+            ants.plot( xx[0], xx[2], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[5] )
+            for j in range(3):
                 ants.image_write( xx[j], ccfn[j] )
-            xx[2]['filename']=fn
-            xx[2].to_csv( ccfn[2] )
+            xx[3]['filename']=fn
+            xx[3].to_csv( ccfn[3] )
+
 
 
