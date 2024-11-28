@@ -41,12 +41,14 @@ leftside=True
 gr=0
 subd=0
 otherside=True
-if otherside:   
+if otherside:
     ccfn = [
         re.sub( ".nii.gz", "_"+ctype+"Rkappa.nii.gz" , fn ), 
         re.sub( ".nii.gz", "_"+ctype+"R.nii.gz" , fn ),
+        re.sub( ".nii.gz", "_"+ctype+"Rthk.nii.gz" , fn ),
         re.sub( ".nii.gz", "_"+ctype+"Rkappa.csv" , fn ),
-        re.sub( ".nii.gz", "_"+ctype+"Rkappa.png" , fn ) ]
+        re.sub( ".nii.gz", "_"+ctype+"Rkappa.png" , fn ),
+        re.sub( ".nii.gz", "_"+ctype+"Rthk.png" , fn ) ]
     pcaud=[3,4]
     plabs=[4]
     if ctype == 'cit':
@@ -55,18 +57,21 @@ if otherside:
         prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr,
         priorparcellation=tcaudR,  plot=True,
         verbose=True )
-    ants.plot( xx[0], xx[1], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[3] )
-    for j in range(2):
+    ants.plot( xx[0], xx[1], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[4] )
+    ants.plot( xx[0], xx[2], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[5] )
+    for j in range(3):
         ants.image_write( xx[j], ccfn[j] )
-    xx[2].to_csv( ccfn[2] )
+    xx[3].to_csv( ccfn[3] )
 
 if leftside:
     mytl=2
     ccfn = [
         re.sub( ".nii.gz", "_"+ctype+"Lkappa.nii.gz" , fn ), 
         re.sub( ".nii.gz", "_"+ctype+"L.nii.gz" , fn ),
+        re.sub( ".nii.gz", "_"+ctype+"Lthk.nii.gz" , fn ),
         re.sub( ".nii.gz", "_"+ctype+"Lkappa.csv" , fn ),
-        re.sub( ".nii.gz", "_"+ctype+"Lkappa.png" , fn ) ]
+        re.sub( ".nii.gz", "_"+ctype+"Lkappa.png" , fn ),
+        re.sub( ".nii.gz", "_"+ctype+"Lthk.png" , fn ) ]
     print("Begin " + fn + " caud kap")
     pcaud=[1,2]
     plabs=[2]
@@ -74,9 +79,10 @@ if leftside:
         prior_labels=pcaud, prior_target_label=plabs, subdivide=subd, grid=gr,
         priorparcellation=tcaudL,  plot=True, searchrange=20,
         verbose=True )
-    ants.plot( xx[0], xx[1], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[3] )
-    for j in range(2):
+    ants.plot( xx[0], xx[1], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[4] )
+    ants.plot( xx[0], xx[1], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[5] )
+    for j in range(3):
         ants.image_write( xx[j], ccfn[j] )
-    xx[2].to_csv( ccfn[2] )
+    xx[2].to_csv( ccfn[3] )
 
 

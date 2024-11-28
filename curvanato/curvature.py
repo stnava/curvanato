@@ -824,7 +824,7 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
         imggk = imggkbest
         labeled = remove_curvature_spine( curvitr, 
             ants.threshold_image(imggk,kmeansLabel,kmeansLabel) )
-        mykk = curvanato.shape_split_thickness( imggk, g=kmeansLabel, w=otherLabel, verbose=False )
+        mykk = shape_split_thickness( imggk, g=kmeansLabel, w=otherLabel, verbose=False )
     else:
         labeled = remove_curvature_spine( curvitr, labeled )
         mykk = labeled * 0.0
@@ -876,7 +876,7 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
         descriptorKK = pd_to_wide( descriptorKK, column_values=['Mean'], prefix = 'CaudTHK_')
         descriptor = pd.concat([descriptor.reset_index(drop=True), descriptorKK.reset_index(drop=True)], axis=1)
     descriptor = descriptor.loc[:, ~descriptor.columns.str.startswith('nan')]
-    return curvitr, labeled, descriptor, mykk
+    return curvitr, labeled, mykk, descriptor
 
 def shape_split_thickness(two_label_segmentation, g=1, w=2, verbose=False):
     """
