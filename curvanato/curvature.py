@@ -807,6 +807,7 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
                 isbest=True
                 bestsum = sum1
                 kmeansLabel=1 
+                otherLabel=2
                 imggkbest = imggk.clone()
                 bestvol = voldiff
             elif ( sum2 > bestsum and voldiff < bestvol ): 
@@ -815,6 +816,7 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
                     print("best " + str(myrandstate) + " diff " + str(voldiff) )
                 bestsum = sum2
                 kmeansLabel=2
+                otherLabel=1
                 imggkbest = imggk.clone()
                 bestvol = voldiff
             if plot and isbest :
@@ -822,8 +824,10 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
         imggk = imggkbest
         labeled = remove_curvature_spine( curvitr, 
             ants.threshold_image(imggk,kmeansLabel,kmeansLabel) )
+        mykk = curvanato.shape_split_thickness( imggk, g=kmeansLabel, w=otherLabel, verbose=False )
     else:
         labeled = remove_curvature_spine( curvitr, labeled )
+        mykk = labeled * 0.0
     if plot :
         ants.plot( binaryimager, labeled, axis=2, crop=True )
 #    labeled = ants.iMath( sidelabelRm * ants.threshold_image(imggk,kmeansLabel,kmeansLabel), 
@@ -863,9 +867,16 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
     gdesc = ants.label_geometry_measures( labeled )
     geos = ['Mean', 'VolumeInMillimeters', 'SurfaceAreaInMillimetersSquared', 'Eccentricity', 'Elongation','Flatness']
     descriptor = pd.concat([descriptor.reset_index(drop=True), gdesc.reset_index(drop=True)], axis=1)
-    descriptor = pd_to_wide( descriptor, column_values=geos)
+    descriptor = pd_to_wide( descriptor, column_values=geos, prefix='CaudKAP_')
+    if mykk.max() > 0.0:
+        mydf = make_label_dataframe( labeled )
+        labeledKK = ants.image_clone( labeled )
+        labeledKK[ mykk == 0 ]=0
+        descriptorKK = antspyt1w.map_intensity_to_dataframe( mydf, mykk, labeledKK )
+        descriptorKK = pd_to_wide( descriptorKK, column_values=['Mean'], prefix = 'CaudTHK_')
+        descriptor = pd.concat([descriptor.reset_index(drop=True), descriptorKK.reset_index(drop=True)], axis=1)
     descriptor = descriptor.loc[:, ~descriptor.columns.str.startswith('nan')]
-    return curvitr, labeled, descriptor
+    return curvitr, labeled, descriptor, mykk
 
 def shape_split_thickness(two_label_segmentation, g=1, w=2, verbose=False):
     """
