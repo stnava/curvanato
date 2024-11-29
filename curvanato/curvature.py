@@ -27,6 +27,9 @@ def flatness(binary_image):
     flatness : float
         Ratio of the smallest to the largest PCA eigenvalue (flatness metric).
     """
+    if binary_image.sum() <= 3:
+        return 0.0
+
     # Get voxel positions where intensity > threshold
     voxel_positions = np.argwhere(binary_image.numpy() > 0)
     
