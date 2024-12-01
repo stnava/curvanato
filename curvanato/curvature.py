@@ -1323,7 +1323,7 @@ def auto_subdivide_left_right_anatomy(
 
     # Perform SyN registration for each region
     reg = ants.registration(segbb, symm, 'SyN')
-    reg2 = ants.registration(segbb2, symm, 'SyN')
+    # reg2 = ants.registration(segbb2, symm, 'SyN')
 
     # Partition the symmetrized image
     print("auto part")
@@ -1336,6 +1336,11 @@ def auto_subdivide_left_right_anatomy(
 
     # Map the partitions back to the original spaces
     zz2og = ants.apply_transforms(segb, zz, reg['fwdtransforms'], interpolator='nearestNeighbor')
-    zz2og2 = ants.apply_transforms(segb2, zz, reg2['fwdtransforms'], interpolator='nearestNeighbor')
+    # zz2og2 = ants.apply_transforms(segb2, zz, reg2['fwdtransforms'], interpolator='nearestNeighbor')
+    # FIXME map zz2og to segb2 via a reflection transform
+    rfl = ants.reflect_image( ants.crop_image(segb, ants.iMath(segb,'MD',8)), axis=0, tx='Translation' )
+    rfl2segb2=ants.registration( ants.crop_image(segb2, ants.iMath(segb2,'MD',8)), rfl['warpedmovout'], 'SyN')
+    zz2og2=ants.apply_transforms( segb2, zz2og, rfl2segb2['fwdtransforms']+rfl['fwdtransforms'], interpolator='nearestNeighbor' )
 
     return zz2og, zz2og2
+    
