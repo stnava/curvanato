@@ -26,4 +26,8 @@ from .curvature import determine_dominant_cluster
 from .curvature import remove_spine_and_finalize_labels
 from .curvature import compute_geom_per_label
 from .curvature import shape_split_thickness
-
+from .curvature import auto_partition_image
+from .curvature import generate_ellipsoid
+from .curvature import shape_eigenvalues
+from .curvature import symmetrize_image
+from .curvature import auto_subdivide_left_right_anatomy

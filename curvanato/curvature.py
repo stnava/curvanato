@@ -45,6 +45,41 @@ def flatness(binary_image):
     
     return 1.0 - flatness
 
+def shape_eigenvalues(binary_image, normalize_by_min=False):
+    """
+    Compute the PCA eigenvalues of the voxel positions in a binary image.
+
+    Parameters
+    ----------
+    binary_image : ants.ANTsImage
+        Input binary image.
+    normalize_by_min : bool, optional
+        Whether to normalize the eigenvalues by the smallest eigenvalue.
+
+    Returns
+    -------
+    eigenvalues : np.ndarray
+        Array of PCA eigenvalues of the voxel positions.
+    """
+    if binary_image.sum() <= 3:
+        return np.array([0.0, 0.0, 0.0])
+
+    # Get voxel positions where intensity > threshold
+    voxel_positions = np.argwhere(binary_image.numpy() > 0)
+    
+    # Perform PCA on voxel positions
+    pca = PCA(n_components=3)
+    pca.fit(voxel_positions)
+    
+    # Eigenvalues from PCA
+    eigenvalues = pca.explained_variance_
+    
+    # Optionally normalize by the smallest eigenvalue
+    if normalize_by_min and eigenvalues.min() > 0:
+        eigenvalues = eigenvalues / eigenvalues.min()
+    
+    return eigenvalues
+
 def skeletonize_topo(x, laplacian_threshold=0.30, propagation_option=2 ):
     """
     Skeletonize a binary segmentation with topology preserving methods
@@ -1076,3 +1111,231 @@ def remove_spine_and_finalize_labels(curvitr, clustered_image, labeled, dominant
     )
     return final_labeled
 
+
+
+def symmetrize_image(image, raxis, image2=None, iterations=5, gradient_step=0.2 ):
+    """
+    Symmetrize an image.
+
+    Parameters:
+    image (ants.ANTsImage): Binary image to symmetrize .
+    raxis (int): Axis along which to reflect the object (0, 1, or 2). zero is probably the one you want but this should be verified for your data.  try overlaying the original image with the reflected version using each axis.
+    image2 (ants.ANTsImage, optional): Optional 2nd image to contribute to partition definition. Defaults to None.
+    iterations (int, optional): Number of iterations for symmetrization. Defaults to 5.
+    gradient_step (float, optional): gradient step size for template building step.
+
+    Returns:
+    ants.ANTsImage: Symmetrized image.
+
+    Notes:
+    This function uses ANTsPy to symmetrize the binary object.
+    If image2 is provided, it is registered to the original image using ANTsPy's registration function.
+    The symmetrized image is then built using ANTsPy's build_template function.
+    """
+
+    # Symmetrize the binary object
+    if image2 is None:
+        # Reflect the image along the specified axis
+        rimage = ants.reflect_image(image, axis=raxis, tx='Affine')
+        # Create a list of images to symmetrize
+        btlist = [image, rimage['warpedmovout']]
+    else:
+        # Register the 2nd image to the original image
+        image2a = ants.registration(image, image2, 'Translation')['warpedmovout']
+        # Create a list of images to symmetrize
+        btlist = [image, image2a]
+
+    # Build the symmetrized image
+    symmetrized_image = ants.build_template(image, btlist, iterations=iterations, type_of_transform='SyN',
+                                                    useNoRigid=False, syn_metric='demons', syn_sampling=2, reg_iterations=[50, 50, 50, 5], 
+                                                    gradient_step=gradient_step )
+
+    return symmetrized_image
+
+
+def auto_partition_image(image,  axis, k  ):
+    """
+    crop binary object to its boundaries, and partition it into k equally sized regions.
+
+    Parameters:
+    image (ants.ANTsImage): Binary image to symmetrize and partition.
+    axis (int): Axis along which to partition the object (0, 1, or 2).
+    k (int): Number of equally sized regions to partition the object into.
+
+    Returns:
+    list of ants.ANTsImage: List of k partitioned images.
+    """
+
+    # Crop the symmetrized image to its boundaries
+    cropped_image = ants.crop_image(image, ants.get_mask(image))
+
+    # Get the shape of the cropped image
+    shape = cropped_image.shape
+
+    # Calculate the size of each partition
+    partition_size = shape[axis] // k
+
+    # Create a labeled image with values ranging from 1 to k
+    labeled_image = cropped_image * 0
+    for i in range(k):
+        start = i * partition_size
+        end = (i + 1) * partition_size
+        if i == k - 1:
+            end = shape[axis]
+        if axis == 0:
+            labeled_image[start:end, :, :] = i + 1
+        elif axis == 1:
+            labeled_image[:, start:end, :] = i + 1
+        elif axis == 2:
+            labeled_image[:, :, start:end] = i + 1
+
+    return labeled_image
+
+
+def generate_ellipsoid(volume, axis_ratio=(1, 1, 1), image_size=(100, 100, 100), reference_image=None ):
+    """
+    Generate a binary image of an ellipsoid with a given volume and axis ratio.
+    
+    Parameters:
+    - volume: float. Desired volume of the ellipsoid in voxel units.
+    - axis_ratio: tuple of floats. Ratios of the ellipsoid's semi-axes (a:b:c).
+    - image_size: tuple of ints. Size of the output image (x, y, z).
+    - reference_image: optional image defining physical space
+    
+    Returns:
+    - ellipsoid_image: ANTsImage. Binary image with the ellipsoid.
+    """
+    # Normalize the axis ratios to semi-axis lengths
+    axis_ratio = np.array(axis_ratio)
+    axis_ratio = axis_ratio / np.prod(axis_ratio) ** (1 / 3)
+    
+    # Compute semi-axes based on the desired volume and axis ratios
+    spc = 1.0 
+#    if reference_image is not None:
+#        spc = np.prod( reference_image.spacing )
+    scaling_factor = (3 * volume / (4 * np.pi)) ** (1 / 3) * spc
+    semi_axes = scaling_factor * axis_ratio
+
+    # Create an empty image
+    img = ants.make_image(image_size, pixeltype="float")
+    origin = np.array(image_size) / 2  # Place ellipsoid center in the middle
+#    img = ants.copy_image_info( reference_image, img )
+#    origin = ants.get_center_of_mass( img *  0 + 1 )
+#    origin = ants.transform_physical_point_to_index( origin )
+#    for k in range(len(origin)):
+#        origin[k] = np.round(origin[k])
+
+    # Create a binary ellipsoid
+    coords = np.meshgrid(
+        np.arange(image_size[0]),
+        np.arange(image_size[1]),
+        np.arange(image_size[2]),
+        indexing="ij"
+    )
+    coords = np.array(coords) - origin[:, np.newaxis, np.newaxis, np.newaxis]
+    coords = coords / semi_axes[:, np.newaxis, np.newaxis, np.newaxis]
+    distances = np.sum(coords ** 2, axis=0)
+
+    # Ellipsoid is defined by all points where the scaled distance is <= 1
+    binary_ellipsoid = distances <= 1
+
+    # Create an ANTsImage from the binary data
+    ellipsoid_image = ants.from_numpy(binary_ellipsoid.astype(np.float32), origin=(0, 0, 0), spacing=(1, 1, 1))
+    if reference_image is not None:
+        ellipsoid_image = ants.copy_image_info( reference_image, ellipsoid_image )
+    return ellipsoid_image
+
+
+
+
+def auto_subdivide_left_right_anatomy(
+    image=None,
+    label1=1,
+    label2=17,
+    symm_iterations=5,
+    gradient_step=0.25,
+    dilation_radius=16,
+    partition_dilation=6,
+    partition_axis=1,
+    partition_k=3
+):
+    """
+    Process and symmetrize putamen images and generate two outputs, zz2og and zz2og2.
+
+    Parameters
+    ----------
+    image : antsImage, optional
+        Path to the image containing the segmentation labels. Defaults to "~/.antspymm/PPMI_template0_deep_cit168lab.nii.gz".
+    label1 : int, optional
+        Label for the first region (e.g., putamen). Defaults to 1.
+    label2 : int, optional
+        Label for the second region (e.g., putamen). Defaults to 17.
+    symm_iterations : int, optional
+        Number of iterations for the symmetrization process. Defaults to 5.
+    gradient_step : float, optional
+        Gradient step size for the symmetrization process. Defaults to 0.25.
+    dilation_radius : int, optional
+        Dilation radius for morphological dilation during segmentation processing. Defaults to 16.
+    partition_dilation : int, optional
+        Dilation radius for partitioning. Defaults to 6.
+    partition_axis : int, optional
+        Axis along which to partition the symmetrized image. Defaults to 1.
+    partition_k : int, optional
+        Number of partitions for the symmetrized image. Defaults to 3.
+
+    Returns
+    -------
+    tuple
+        zz2og : ants.ANTsImage
+            Partitioned image mapped to the space of the first region.
+        zz2og2 : ants.ANTsImage
+            Partitioned image mapped to the space of the second region.
+
+    Example
+    -------
+    >>> zz2og, zz2og2 = curvanato.auto_subdivide_left_right_anatomy()
+    """
+
+    # Load and threshold the input image for the first label
+    if image is None:
+        image_path="~/.antspymm/PPMI_template0_deep_cit168lab.nii.gz"
+        image = ants.image_read(image_path)
+    segb = ants.threshold_image(image,label1, label1)
+    segtight = ants.crop_image(segb, ants.iMath(segb, 'MD', 0))
+    segbb = ants.crop_image(segb, ants.iMath(segb, 'MD', dilation_radius))
+
+    # Load and threshold the input image for the second label
+    segb2 = ants.threshold_image(image,label2, label2)
+    segbb2 = ants.crop_image(segb2, ants.iMath(segb2, 'MD', dilation_radius))
+
+    # Register the second label region to the first
+    affreg = ants.registration(segbb2, segbb, 'Affine')
+    segbb2aff = affreg['warpedfixout']
+
+    # Symmetrize the images
+    symm = symmetrize_image(
+        segbb,
+        raxis=0,
+        iterations=symm_iterations,
+        image2=segbb2aff,
+        gradient_step=gradient_step
+    )
+
+    # Perform SyN registration for each region
+    reg = ants.registration(segbb, symm, 'SyN')
+    reg2 = ants.registration(segbb2, symm, 'SyN')
+
+    # Partition the symmetrized image
+    print("auto part")
+    symmb = ants.threshold_image(symm, 0.5, 99)
+    zz = auto_partition_image(
+        ants.iMath(symmb, 'MD', partition_dilation),
+        axis=partition_axis,
+        k=partition_k
+    )
+
+    # Map the partitions back to the original spaces
+    zz2og = ants.apply_transforms(segb, zz, reg['fwdtransforms'], interpolator='nearestNeighbor')
+    zz2og2 = ants.apply_transforms(segb2, zz, reg2['fwdtransforms'], interpolator='nearestNeighbor')
+
+    return zz2og, zz2og2
