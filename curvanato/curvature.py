@@ -1113,7 +1113,7 @@ def remove_spine_and_finalize_labels(curvitr, clustered_image, labeled, dominant
 
 
 
-def symmetrize_image(image, raxis, image2=None, iterations=5, gradient_step=0.2 ):
+def symmetrize_image(image, raxis, image2=None, iterations=5, gradient_step=0.2, no_rigid=True, initial_image=None ):
     """
     Symmetrize an image.
 
@@ -1123,6 +1123,8 @@ def symmetrize_image(image, raxis, image2=None, iterations=5, gradient_step=0.2 
     image2 (ants.ANTsImage, optional): Optional 2nd image to contribute to partition definition. Defaults to None.
     iterations (int, optional): Number of iterations for symmetrization. Defaults to 5.
     gradient_step (float, optional): gradient step size for template building step.
+    no_rigid (boolean, False): optional for symmetrizing
+    initial_image (antsImage, None): optional
 
     Returns:
     ants.ANTsImage: Symmetrized image.
@@ -1146,8 +1148,11 @@ def symmetrize_image(image, raxis, image2=None, iterations=5, gradient_step=0.2 
         btlist = [image, image2a]
 
     # Build the symmetrized image
-    symmetrized_image = ants.build_template(image, btlist, iterations=iterations, type_of_transform='SyN',
-                                                    useNoRigid=False, syn_metric='demons', syn_sampling=2, reg_iterations=[50, 50, 50, 5], 
+    if initial_image is None:
+        initial_image = btlist[0].clone()
+    symmetrized_image = ants.build_template(initial_image, btlist, iterations=iterations, type_of_transform='SyN',
+                                                    useNoRigid=no_rigid, syn_metric='demons', 
+                                                    syn_sampling=2, reg_iterations=[50, 50, 50, 10], 
                                                     gradient_step=gradient_step )
 
     return symmetrized_image
@@ -1290,10 +1295,12 @@ def auto_subdivide_left_right_anatomy(
             Partitioned image mapped to the space of the first region.
         zz2og2 : ants.ANTsImage
             Partitioned image mapped to the space of the second region.
+        symm : ants.ANTsImage
+            symmetrized anatomy (roughly)
 
     Example
     -------
-    >>> zz2og, zz2og2 = curvanato.auto_subdivide_left_right_anatomy()
+    >>> zz2og, zz2og2, symm = curvanato.auto_subdivide_left_right_anatomy()
     """
 
     # Load and threshold the input image for the first label
@@ -1313,13 +1320,17 @@ def auto_subdivide_left_right_anatomy(
     segbb2aff = affreg['warpedfixout']
 
     # Symmetrize the images
-    symm = symmetrize_image(
-        segbb,
-        raxis=0,
-        iterations=symm_iterations,
-        image2=segbb2aff,
-        gradient_step=gradient_step
-    )
+    symm = ants.image_clone( segbb )
+    for j in range(4):
+        symm = symmetrize_image(
+            symm,
+            raxis=0,
+            iterations=symm_iterations,
+            image2=segbb2aff,
+            gradient_step=gradient_step,
+            initial_image=symm
+        )
+        ants.plot( symm, crop=True, axis=2 )
 
     # Perform SyN registration for each region
     reg = ants.registration(segbb, symm, 'SyN')
@@ -1338,9 +1349,8 @@ def auto_subdivide_left_right_anatomy(
     zz2og = ants.apply_transforms(segb, zz, reg['fwdtransforms'], interpolator='nearestNeighbor')
     # zz2og2 = ants.apply_transforms(segb2, zz, reg2['fwdtransforms'], interpolator='nearestNeighbor')
     # FIXME map zz2og to segb2 via a reflection transform
-    rfl = ants.reflect_image( ants.crop_image(segb, ants.iMath(segb,'MD',8)), axis=0, tx='Translation' )
+    rfl = ants.reflect_image( ants.crop_image(segb, ants.iMath(segb,'MD',8)), axis=0, tx='Similarity' )
     rfl2segb2=ants.registration( ants.crop_image(segb2, ants.iMath(segb2,'MD',8)), rfl['warpedmovout'], 'SyN')
     zz2og2=ants.apply_transforms( segb2, zz2og, rfl2segb2['fwdtransforms']+rfl['fwdtransforms'], interpolator='nearestNeighbor' )
 
-    return zz2og, zz2og2
-    
+    return zz2og, zz2og2, symm
