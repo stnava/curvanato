@@ -1339,22 +1339,42 @@ def auto_subdivide_left_right_anatomy(
         image_path="~/.antspymm/PPMI_template0_deep_cit168lab.nii.gz"
         image = ants.image_read(image_path)
     segb = ants.threshold_image(image,label1, label1)
-    segtight = ants.crop_image(segb, ants.iMath(segb, 'MD', 0))
-    segbb = ants.crop_image(segb, ants.iMath(segb, 'MD', dilation_radius))
-
-    # Load and threshold the input image for the second label
     segb2 = ants.threshold_image(image,label2, label2)
-    segbb2 = ants.crop_image(segb2, ants.iMath(segb2, 'MD', dilation_radius))
+    segbtx = principal_axis_and_rotation( segb, [1,0,0])
+    segbtx_inv = ants.invert_ants_transform( segbtx )
+    segbr = ants.apply_ants_transform_to_image( segbtx, segb, segb, interpolation='nearestNeighbor')
+    segbb = ants.crop_image(segbr, ants.iMath(segbr, 'MD', dilation_radius))
+    zz = auto_partition_image(
+        ants.iMath(segbb, 'MD', partition_dilation),
+        axis=partition_axis,
+        k=partition_k
+    )
+    zz2origspace = ants.apply_ants_transform_to_image( segbtx_inv, zz, segb, interpolation='nearestNeighbor')
+    anat1partitioned = segb * zz2origspace
 
-    # Register the second label region to the first
-    # affreg = ants.registration(segbb2, segbb, 'Similarity')
-#    affreg = ants.affine_initializer(segbb2, segbb, search_factor=10, 
-#        radian_fraction=0.05, use_principal_axis=True, 
-#        local_search_iterations=50, mask=None, txfn=None)
+    rfl = ants.reflect_image( ants.crop_image(segb, ants.iMath(segb,'MD',8)), axis=0, tx='Similarity' )
+    rfl2segb2=ants.registration( ants.crop_image(segb2, ants.iMath(segb2,'MD',8)), rfl['warpedmovout'], "antsRegistrationSyNQuickRepro[s]")
+    zz2og2=ants.apply_transforms( segb2, zz2origspace, 
+        rfl2segb2['fwdtransforms']+rfl['fwdtransforms'], interpolator='nearestNeighbor' )
+    anat2partitioned = segb2 * zz2og2
+    return anat1partitioned, anat2partitioned
+
+
+
+#    segb2tx = principal_axis_and_rotation( segb2, [1,0,0])
+#    segb2tx_inv = ants.invert_ants_transform( segb2tx )
+#    segb2r = ants.apply_ants_transform_to_image( segb2tx, segb2, segb2, interpolation='nearestNeighbor')
+#    segbb2 = ants.crop_image(segb2r, ants.iMath(segb2r, 'MD', dilation_radius))
+#    zz = auto_partition_image(
+#        ants.iMath(segbb2, 'MD', partition_dilation),
+#        axis=partition_axis,
+#        k=partition_k
+#    )
+#    zz2origspace = ants.apply_ants_transform_to_image( segb2tx_inv, zz, segb2, interpolation='nearestNeighbor')
+ 
     affreg = antspymm.tra_initializer( fixed=segbb2, moving=segbb, n_simulations=32, max_rotation=30, transform=[ 'rigid','affine'], compreg=None, verbose=True)
 
     segbb2aff = ants.apply_transforms(  segbb, segbb2, transformlist=affreg['fwdtransforms'], whichtoinvert=[True] )
-#    ants.plot( segbb, segbb2aff, axis=2 )
 
     # Symmetrize the images
     symm = segbb * 0.5 + segbb2aff * 0.5
@@ -1367,12 +1387,6 @@ def auto_subdivide_left_right_anatomy(
             gradient_step=gradient_step,
             initial_image=symm
         )
-#        ants.plot( symm, crop=True, axis=2 )
-
-
-    toyaxisTx = align_to_y_axis( symm )
-    symm = ants.apply_transforms( symm, symm, toyaxisTx )
-    ants.plot( symm, axis=2, crop=True )
 
     # Perform SyN registration for each region
     reg = ants.registration(segbb, symm, 'SyN')
@@ -1386,6 +1400,8 @@ def auto_subdivide_left_right_anatomy(
         axis=partition_axis,
         k=partition_k
     )
+    zzr = ants.resample_image_to_target( zz, symmb, interp_type='nearestNeighbor' )
+    ants.plot( symmb, zzr * symmb, crop=True, axis=2 )
 
     # Map the partitions back to the original spaces
     zz2og = ants.apply_transforms(segb, zz, reg['fwdtransforms'], interpolator='nearestNeighbor')
