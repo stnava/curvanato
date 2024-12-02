@@ -14,7 +14,8 @@ output = curvanato.auto_subdivide_left_right_anatomy(
     dilation_radius=16,
     partition_dilation=1,
     partition_axis=1,
-    partition_k=3 )
+    partition_k=3, 
+    reference_axis=[0,1,0] )
 #############################################
 seg1b=ants.threshold_image(image,xx[0],xx[0])
 seg2b=ants.threshold_image(image,xx[1],xx[1])
