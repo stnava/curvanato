@@ -1288,8 +1288,6 @@ def auto_subdivide_left_right_anatomy(
     image=None,
     label1=1,
     label2=17,
-    symm_iterations=5,
-    gradient_step=0.25,
     dilation_radius=16,
     partition_dilation=6,
     partition_axis=1,
@@ -1306,10 +1304,6 @@ def auto_subdivide_left_right_anatomy(
         Label for the first region (e.g., putamen). Defaults to 1.
     label2 : int, optional
         Label for the second region (e.g., putamen). Defaults to 17.
-    symm_iterations : int, optional
-        Number of iterations for the symmetrization process. Defaults to 5.
-    gradient_step : float, optional
-        Gradient step size for the symmetrization process. Defaults to 0.25.
     dilation_radius : int, optional
         Dilation radius for morphological dilation during segmentation processing. Defaults to 16.
     partition_dilation : int, optional
@@ -1338,8 +1332,8 @@ def auto_subdivide_left_right_anatomy(
     if image is None:
         image_path="~/.antspymm/PPMI_template0_deep_cit168lab.nii.gz"
         image = ants.image_read(image_path)
-    segb = ants.threshold_image(image,label1, label1)
-    segb2 = ants.threshold_image(image,label2, label2)
+    segb = ants.threshold_image(image,label1, label1).iMath("GetLargestComponent")
+    segb2 = ants.threshold_image(image,label2, label2).iMath("GetLargestComponent")
     segbtx = principal_axis_and_rotation( segb, [1,0,0])
     segbtx_inv = ants.invert_ants_transform( segbtx )
     segbr = ants.apply_ants_transform_to_image( segbtx, segb, segb, interpolation='nearestNeighbor')
@@ -1412,9 +1406,7 @@ def auto_subdivide_left_right_anatomy(
     return zz2og, zz2og2, symm
 
 
-
-
-def principal_axis_and_rotation( image, target_axis):
+def principal_axis_and_rotation(image, target_axis):
     """
     Computes the principal axis of a binary object from its coordinates and calculates
     the rotation matrix to align this principal axis with a user-defined axis.
@@ -1422,52 +1414,99 @@ def principal_axis_and_rotation( image, target_axis):
     Parameters:
     ----------
     image : antsimage
+        A binary image representing the object of interest.
     target_axis : ndarray
         A 1D numpy array of shape (3,) defining the axis to which the principal axis should be aligned.
 
     Returns:
     -------
-    principal_axis : ndarray
-        A 1D numpy array of shape (3,) representing the principal axis of the binary object.
-    rotation_matrix : ndarray
-        A 2D numpy array of shape (3, 3) representing the rotation matrix to align the principal axis
-        with the target axis.
+    mytx : ANTs transform
+        An affine transform object representing the smaller rotation to align the principal axis
+        with the target axis (or its negation).
 
     Notes:
     ------
     - The principal axis is computed as the eigenvector of the covariance matrix of the coordinates
       corresponding to the largest eigenvalue.
     - If the principal axis is already aligned with the target axis, the rotation matrix will be the identity matrix.
+    - Ensures no reflection along eigenvectors and sorts eigenvectors by eigenvalues.
     """
 
-    coords = ants.get_neighborhood_in_mask(image, image, radius=(0,0,0), physical_coordinates=True, spatial_info=True )['indices']
+    import numpy as np
+    import ants
+
+    # Extract coordinates of the binary object
+    coords = ants.get_neighborhood_in_mask(
+        image, image, radius=(0, 0, 0), physical_coordinates=True, spatial_info=True
+    )["indices"]
+    
     # Center the coordinates to compute the covariance matrix
     centered_coords = coords - np.mean(coords, axis=0)
     covariance_matrix = np.cov(centered_coords, rowvar=False)
-    
+
     # Compute eigenvalues and eigenvectors
     eigvals, eigvecs = np.linalg.eig(covariance_matrix)
-    
+
+    # Sort eigenvalues and eigenvectors by eigenvalues (descending order)
+    sorted_indices = np.argsort(eigvals)[::-1]
+    eigvals = eigvals[sorted_indices]
+    eigvecs = eigvecs[:, sorted_indices]
+
+    # Ensure no reflections along eigenvectors by orienting them consistently
+    for i in range(eigvecs.shape[1]):
+        if np.dot(eigvecs[:, i], np.array([1, 0, 0])) < 0:
+            eigvecs[:, i] *= -1
+
     # Principal axis corresponds to the eigenvector with the largest eigenvalue
-    principal_axis = eigvecs[:, np.argmax(eigvals)]
-    
+    principal_axis = eigvecs[:, 0]
+
     # Normalize target axis
     target_axis = target_axis / np.linalg.norm(target_axis)
-    
-    # Compute the rotation matrix to align the principal axis with the target axis
-    v = np.cross(principal_axis, target_axis)
-    s = np.linalg.norm(v)
-    c = np.dot(principal_axis, target_axis)
-    if s == 0:  # Already aligned
-        rotation_matrix = np.eye(3)
-    else:
-        vx = np.array([
-            [0, -v[2], v[1]],
-            [v[2], 0, -v[0]],
-            [-v[1], v[0], 0]
-        ])
-        rotation_matrix = np.eye(3) + vx + vx @ vx * ((1 - c) / (s ** 2))
-    
 
-    mytx = ants.create_ants_transform(transform_type='AffineTransform', precision='float', dimension=3, matrix=rotation_matrix, offset=None, center=ants.get_center_of_mass(image))
+    def compute_rotation_matrix(axis_from, axis_to):
+        """Compute the rotation matrix to align axis_from to axis_to."""
+        v = np.cross(axis_from, axis_to)
+        s = np.linalg.norm(v)
+        c = np.dot(axis_from, axis_to)
+        if s == 0:  # Already aligned
+            rotation_matrix = np.eye(3)
+        else:
+            vx = np.array([
+                [0, -v[2], v[1]],
+                [v[2], 0, -v[0]],
+                [-v[1], v[0], 0]
+            ])
+            rotation_matrix = np.eye(3) + vx + vx @ vx * ((1 - c) / (s ** 2))
+        return rotation_matrix
+
+    # Compute rotation matrices
+    rotation_matrix_to_target = compute_rotation_matrix(principal_axis, target_axis)
+    rotation_matrix_to_negative_target = compute_rotation_matrix(principal_axis, -target_axis)
+
+    # Ensure no reflections in the rotation matrices
+    if np.linalg.det(rotation_matrix_to_target) < 0:
+        rotation_matrix_to_target[:, 2] *= -1
+    if np.linalg.det(rotation_matrix_to_negative_target) < 0:
+        rotation_matrix_to_negative_target[:, 2] *= -1
+
+    # Compute differences from the identity matrix
+    diff_to_target = np.linalg.norm(rotation_matrix_to_target - np.eye(3))
+    diff_to_negative_target = np.linalg.norm(rotation_matrix_to_negative_target - np.eye(3))
+
+    # Choose the smaller rotation
+    if diff_to_target <= diff_to_negative_target:
+        selected_rotation_matrix = rotation_matrix_to_target
+    else:
+        selected_rotation_matrix = rotation_matrix_to_negative_target
+
+    # Create the ANTs affine transform
+    mytx = ants.create_ants_transform(
+        transform_type='AffineTransform',
+        precision='float',
+        dimension=3,
+        matrix=selected_rotation_matrix,
+        offset=None,
+        center=ants.get_center_of_mass(image)
+    )
+
     return mytx

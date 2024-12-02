@@ -11,10 +11,8 @@ output = curvanato.auto_subdivide_left_right_anatomy(
     image=image,
     label1=xx[0],
     label2=xx[1],
-    symm_iterations=6,
-    gradient_step=0.15,
     dilation_radius=16,
-    partition_dilation=6,
+    partition_dilation=1,
     partition_axis=1,
     partition_k=3 )
 #############################################
