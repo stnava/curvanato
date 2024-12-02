@@ -1411,7 +1411,7 @@ def auto_subdivide_left_right_anatomy(
     return zz2og, zz2og2, symm
 
 
-def principal_axis_and_rotation(image, target_axis):
+def principal_axis_and_rotation(image, target_axis, verbose=False ):
     """
     Computes the principal axis of a binary object from its coordinates and calculates
     the rotation matrix to align this principal axis with a user-defined axis.
@@ -1422,6 +1422,7 @@ def principal_axis_and_rotation(image, target_axis):
         A binary image representing the object of interest.
     target_axis : ndarray
         A 1D numpy array of shape (3,) defining the axis to which the principal axis should be aligned.
+    verbose : boolean
 
     Returns:
     -------
@@ -1503,6 +1504,9 @@ def principal_axis_and_rotation(image, target_axis):
         selected_rotation_matrix = rotation_matrix_to_target
     else:
         selected_rotation_matrix = rotation_matrix_to_negative_target
+
+    if verbose:
+        print( selected_rotation_matrix )
 
     # Create the ANTs affine transform
     mytx = ants.create_ants_transform(
@@ -1600,8 +1604,8 @@ def auto_subdivide_left_right_anatomy2(
         rfl2segb2 = antspymm.tra_initializer( 
             fixed=ants.crop_image(segb2, ants.iMath(segb2, "MD", 12)), 
             moving=rfl["warpedmovout"], 
-            n_simulations=32, max_rotation=30, 
-            transform=[ 'rigid','SyN'], compreg=None, verbose=True)
+            n_simulations=64, max_rotation=35, # assume 10 deg capture range and 45 deg max rotational offset
+            transform=[ 'rigid' ], compreg=None, verbose=True)
 
 #        rfl2segb2 = ants.registration(
 #            ants.crop_image(segb2, ants.iMath(segb2, "MD", 12)),
