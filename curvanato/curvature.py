@@ -1291,7 +1291,8 @@ def auto_subdivide_left_right_anatomy(
     dilation_radius=16,
     partition_dilation=6,
     partition_axis=1,
-    partition_k=3
+    partition_k=3,
+    reference_axis=[1,0,0]
 ):
     """
     Process and symmetrize putamen images and generate two outputs, zz2og and zz2og2.
@@ -1312,6 +1313,7 @@ def auto_subdivide_left_right_anatomy(
         Axis along which to partition the symmetrized image. Defaults to 1.
     partition_k : int, optional
         Number of partitions for the symmetrized image. Defaults to 3.
+    reference_axis :  3-vector eg [1,0,0]
 
     Returns
     -------
@@ -1334,7 +1336,7 @@ def auto_subdivide_left_right_anatomy(
         image = ants.image_read(image_path)
     segb = ants.threshold_image(image,label1, label1).iMath("GetLargestComponent")
     segb2 = ants.threshold_image(image,label2, label2).iMath("GetLargestComponent")
-    segbtx = principal_axis_and_rotation( segb, [1,0,0])
+    segbtx = principal_axis_and_rotation( segb, reference_axis )
     segbtx_inv = ants.invert_ants_transform( segbtx )
     segbr = ants.apply_ants_transform_to_image( segbtx, segb, segb, interpolation='nearestNeighbor')
     segbb = ants.crop_image(segbr, ants.iMath(segbr, 'MD', dilation_radius))
