@@ -1524,7 +1524,8 @@ def auto_subdivide_left_right_anatomy2(
     dilation_radius=16,
     partition_dilation=6,
     partition_axis=1,
-    partition_k=3
+    partition_k=3,
+    reference_axes = [ [1,0,0], [0,1,0] ]
 ):
     """
     Process and symmetrize putamen images and generate two outputs, zz2og and zz2og2.
@@ -1545,6 +1546,7 @@ def auto_subdivide_left_right_anatomy2(
         Axis along which to partition the symmetrized image. Defaults to 1.
     partition_k : int, optional
         Number of partitions for the symmetrized image. Defaults to 3.
+    reference_axes : list of axes e.g. unit vectors [ [1,0,0], [0,1,0] ]
 
     Returns
     -------
@@ -1566,15 +1568,13 @@ def auto_subdivide_left_right_anatomy2(
     segb2 = ants.threshold_image(image, label2, label2).iMath("GetLargestComponent")
 
     # Define candidate axes
-    candidate_axes = [np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 1])]
-
     best_score = float("inf")
     best_anat1partitioned = None
     best_anat2partitioned = None
     best_axis = None
 
     # Loop through candidate axes to find the best axis
-    for axis in candidate_axes:
+    for axis in reference_axes:
         segbtx = principal_axis_and_rotation(segb, axis)
         segbtx_inv = ants.invert_ants_transform(segbtx)
         segbr = ants.apply_ants_transform_to_image(
@@ -1631,6 +1631,6 @@ def auto_subdivide_left_right_anatomy2(
             best_score = score
             best_anat1partitioned = anat1partitioned
             best_anat2partitioned = anat2partitioned
-            best_axis = axis.tolist()
+            best_axis = axis.copy()
 
     return best_anat1partitioned, best_anat2partitioned, best_axis
