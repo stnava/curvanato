@@ -1347,12 +1347,15 @@ def auto_subdivide_left_right_anatomy(
     )
     zz2origspace = ants.apply_ants_transform_to_image( segbtx_inv, zz, segb, interpolation='nearestNeighbor')
     anat1partitioned = segb * zz2origspace
+    anat1partitioned = ants.iMath(segb, "PropagateLabelsThroughMask", anat1partitioned, 200000, 0 )
 
     rfl = ants.reflect_image( ants.crop_image(segb, ants.iMath(segb,'MD',8)), axis=0, tx='Similarity' )
     rfl2segb2=ants.registration( ants.crop_image(segb2, ants.iMath(segb2,'MD',8)), rfl['warpedmovout'], "antsRegistrationSyNQuickRepro[s]")
     zz2og2=ants.apply_transforms( segb2, zz2origspace, 
         rfl2segb2['fwdtransforms']+rfl['fwdtransforms'], interpolator='nearestNeighbor' )
     anat2partitioned = segb2 * zz2og2
+    anat2partitioned = ants.iMath(segb2, "PropagateLabelsThroughMask", anat2partitioned, 200000, 0 )
+
     return anat1partitioned, anat2partitioned
 
 #    segb2tx = principal_axis_and_rotation( segb2, [1,0,0])
