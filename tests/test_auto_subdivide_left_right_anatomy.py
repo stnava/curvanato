@@ -5,8 +5,7 @@ import numpy as np
 #####
 image = ants.image_read("~/.antspymm/PPMI_template0_deep_cit168lab.nii.gz")
 #####
-# for x1 in list( range(1,16 ) ):
-for x1 in list( range(6,7 ) ):
+for x1 in list( range(1,16 ) ):
     xx=[x1,x1+16]
     #############################################
     seg1b=ants.threshold_image(image,xx[0],xx[0])
