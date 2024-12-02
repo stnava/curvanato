@@ -1279,7 +1279,7 @@ def align_to_y_axis(image):
     vv=image.sum()*2.0
     g = generate_ellipsoid(volume=vv, axis_ratio=rat, image_size=isz )
     g = ants.copy_image_info( image, g )
-    affreg = antspymm.tra_initializer( fixed=g, moving=image, n_simulations=32, max_rotation=60, transform=[ 'rigid','affine'], compreg=None, verbose=True)
+    affreg = antspymm.tra_initializer( fixed=g, moving=image, n_simulations=32, max_rotation=60, transform=[ 'rigid','affine'], compreg=None, verbose=False)
     return affreg['fwdtransforms']
 
 
@@ -1336,7 +1336,7 @@ def auto_subdivide_left_right_anatomy(
         image = ants.image_read(image_path)
     segb = ants.threshold_image(image,label1, label1).iMath("GetLargestComponent")
     segb2 = ants.threshold_image(image,label2, label2).iMath("GetLargestComponent")
-    segbtx = principal_axis_and_rotation( segb, reference_axis )
+    segbtx, pa1 = principal_axis_and_rotation( segb, reference_axis )
     segbtx_inv = ants.invert_ants_transform( segbtx )
     segbr = ants.apply_ants_transform_to_image( segbtx, segb, segb, interpolation='nearestNeighbor')
     segbb = ants.crop_image(segbr, ants.iMath(segbr, 'MD', dilation_radius))
@@ -1369,7 +1369,7 @@ def auto_subdivide_left_right_anatomy(
 #    )
 #    zz2origspace = ants.apply_ants_transform_to_image( segb2tx_inv, zz, segb2, interpolation='nearestNeighbor')
  
-    affreg = antspymm.tra_initializer( fixed=segbb2, moving=segbb, n_simulations=32, max_rotation=30, transform=[ 'rigid','affine'], compreg=None, verbose=True)
+    affreg = antspymm.tra_initializer( fixed=segbb2, moving=segbb, n_simulations=32, max_rotation=30, transform=[ 'rigid','affine'], compreg=None, verbose=False)
 
     segbb2aff = ants.apply_transforms(  segbb, segbb2, transformlist=affreg['fwdtransforms'], whichtoinvert=[True] )
 
@@ -1429,6 +1429,7 @@ def principal_axis_and_rotation(image, target_axis, verbose=False ):
     mytx : ANTs transform
         An affine transform object representing the smaller rotation to align the principal axis
         with the target axis (or its negation).
+    principal_axis : the principal_axis
 
     Notes:
     ------
@@ -1518,7 +1519,102 @@ def principal_axis_and_rotation(image, target_axis, verbose=False ):
         center=ants.get_center_of_mass(image)
     )
 
-    return mytx
+    return mytx, principal_axis
+
+
+
+def parc_objective(segmentation, principal_axis):
+    """
+    Compute the objective function for parcellation evaluation.
+
+    Parameters:
+    ----------
+    segmentation : ndarray
+        A 3D numpy array where each voxel's value represents its segmentation label.
+    principal_axis : ndarray
+        A 1D numpy array representing the principal axis of the structure.
+
+    Returns:
+    -------
+    objective_score : float
+        The combined objective function score (lower is better).
+    details : dict
+        A dictionary containing individual scores (evenness, smoothness, alignment).
+    """
+    import numpy as np
+    from scipy.ndimage import label, find_objects, sobel
+    # Normalize principal axis
+    principal_axis = principal_axis / np.linalg.norm(principal_axis)
+
+    # Compute unique labels and their sizes
+    unique_labels, label_sizes = np.unique(segmentation, return_counts=True)
+    label_sizes = label_sizes[unique_labels > 0]  # Ignore background label (0)
+    unique_labels = unique_labels[unique_labels > 0]
+    
+    # Evenness Score: Standard deviation of label sizes
+    evenness_score = np.std(label_sizes)
+
+    # Smoothness Score: Sum of boundary gradients
+    smoothness_score = 0
+    for label_id in unique_labels:
+        binary_mask = (segmentation == label_id)
+        gradient_magnitude = np.sqrt(
+            sobel(binary_mask, axis=0, mode='constant')**2 +
+            sobel(binary_mask, axis=1, mode='constant')**2 +
+            sobel(binary_mask, axis=2, mode='constant')**2
+        )
+        smoothness_score += gradient_magnitude.sum()
+
+    # Alignment Score: Angular deviation of label normals from principal axis
+    alignment_score = 0
+    valid_components = 0  # Count valid components contributing to the score
+
+    for label_id in unique_labels:
+        binary_mask = (segmentation == label_id)
+        labeled, _ = label(binary_mask)  # Identify connected components
+        slices = find_objects(labeled)
+        for obj_slice in slices:
+            if obj_slice is not None:
+                # Compute the bounding box center
+                coords = np.array(np.where(labeled[obj_slice] > 0)).T
+                if coords.size == 0:  # Skip empty components
+                    continue
+                center = coords.mean(axis=0)
+
+                # Normalize the normal vector, skip if zero
+                norm = np.linalg.norm(center)
+                if norm == 0:
+                    continue
+                normal_vector = center / norm
+
+                # Compute alignment using dot product
+                cos_theta = np.abs(np.dot(normal_vector, principal_axis))
+                alignment_score += 1 - cos_theta
+                valid_components += 1
+
+    if valid_components > 0:
+        alignment_score /= valid_components
+    else:
+        alignment_score = float('inf')  # Penalize invalid segmentation heavily
+
+    # Combine scores into a single objective
+    lambda1, lambda2, lambda3 = 1.0, 0.05, 1.e3 # Weights for each term
+    objective_score = (
+        lambda1 * evenness_score +
+        lambda2 * smoothness_score +
+        lambda3 * alignment_score
+    )
+
+    # Return the score and detailed breakdown
+    details = {
+        "Evenness Score": evenness_score,
+        "Smoothness Score": smoothness_score,
+        "Alignment Score": alignment_score
+    }
+    print("OBJECTIVE " + str(objective_score))
+    print( details )
+    return objective_score
+
 
 
 def auto_subdivide_left_right_anatomy2(
@@ -1572,14 +1668,15 @@ def auto_subdivide_left_right_anatomy2(
     segb2 = ants.threshold_image(image, label2, label2).iMath("GetLargestComponent")
 
     # Define candidate axes
-    best_score = float("inf")
+    import math
+    best_score = math.inf
     best_anat1partitioned = None
     best_anat2partitioned = None
     best_axis = None
 
     # Loop through candidate axes to find the best axis
     for axis in reference_axes:
-        segbtx = principal_axis_and_rotation(segb, axis)
+        segbtx, pa1 = principal_axis_and_rotation(segb, axis)
         segbtx_inv = ants.invert_ants_transform(segbtx)
         segbr = ants.apply_ants_transform_to_image(
             segbtx, segb, segb, interpolation="nearestNeighbor"
@@ -1605,7 +1702,7 @@ def auto_subdivide_left_right_anatomy2(
             fixed=ants.crop_image(segb2, ants.iMath(segb2, "MD", 12)), 
             moving=rfl["warpedmovout"], 
             n_simulations=64, max_rotation=35, # assume 10 deg capture range and 45 deg max rotational offset
-            transform=[ 'rigid' ], compreg=None, verbose=True)
+            transform=[ 'rigid' ], compreg=None, verbose=False)
 
 #        rfl2segb2 = ants.registration(
 #            ants.crop_image(segb2, ants.iMath(segb2, "MD", 12)),
@@ -1626,12 +1723,15 @@ def auto_subdivide_left_right_anatomy2(
         # Calculate distribution evenness
         labels1, counts1 = np.unique(anat1partitioned.numpy(), return_counts=True)
         labels2, counts2 = np.unique(anat2partitioned.numpy(), return_counts=True)
-        score1 = np.abs(np.std(counts1)) + np.abs(np.std(counts2))
-        score2 = np.abs( np.abs(np.std(counts1)) - np.abs(np.std(counts2)))
-        score = score1 + score2*1.0
+#        score1 = np.abs(np.std(counts1)) + np.abs(np.std(counts2))
+#        score2 = np.abs( np.abs(np.std(counts1)) - np.abs(np.std(counts2)))
+#        score = score1 + score2*1.0
+#        score = 1.0/np.mean( counts1 ) + 1.0/np.mean( counts2 )
+        score = parc_objective( anat1partitioned.numpy(), pa1 )
 
         # Update best partition if the current score is better
         if score < best_score:
+            print("ISBEST")
             best_score = score
             best_anat1partitioned = anat1partitioned
             best_anat2partitioned = anat2partitioned

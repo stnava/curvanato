@@ -7,7 +7,7 @@ image = ants.image_read("~/.antspymm/PPMI_template0_deep_cit168lab.nii.gz")
 #####
 raxes = [ [1,0,0], [0,1,0], [0,0,1] ]
 # raxes = [ [0,1,0] ]
-for x1 in list( range(1,17 ) ):
+for x1 in list( range(1,7 ) ):
 # for x1 in list( range(2,3 ) ):
         xx=[x1,x1+16]
         #############################################
@@ -22,8 +22,9 @@ for x1 in list( range(1,17 ) ):
                 dilation_radius=12,
                 partition_dilation=1,
                 partition_axis=1,
-                partition_k=5, 
+                partition_k=8, 
                 reference_axes=raxes )
+            ants.image_write( output[0] + output[1], '/tmp/tempX2.nii.gz' )
             print( str(x1) + " auto-axis ")
             if len(output)>2:
                 print( output[2] )
