@@ -35,4 +35,4 @@ for x1 in list( range(3,15 ) ):
             reference_axis=[1,0,0] )
         ants.plot(seg1b,output[0],axis=2,crop=True)
         ants.plot(seg2b,output[1],axis=2,crop=True)
-        print( str(x2) + " axis1 ")
+        print( str(x1) + " axis2 ")
