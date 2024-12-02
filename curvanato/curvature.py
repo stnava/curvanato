@@ -7,6 +7,7 @@ import antspyt1w
 import pandas as pd
 import pandas as pd
 import ants
+import antspymm
 
 
 import numpy as np
@@ -1252,6 +1253,36 @@ def generate_ellipsoid(volume, axis_ratio=(1, 1, 1), image_size=(100, 100, 100),
 
 
 
+def align_to_y_axis(image):
+    """
+    Aligns a 3D binary image such that its principal axis is oriented along the y-axis.
+
+    Parameters:
+    ----------
+    image : ndarray
+        A 3D binary antsImage
+
+    Returns:
+    -------
+    transformation : an affine transform
+
+    """
+    tight_image=ants.crop_image( ants.get_mask(image) )
+    sz = tight_image.shape
+    rat = []
+    for k in range(image.dimension):
+        rat.append( sz[k] / min( sz ) )
+    rat = [1,max(rat),1]
+    isz = []
+    for k in range(image.dimension):
+        isz.append( int( np.round( rat[k] * max(sz) * 2) ) )
+    vv=image.sum()*2.0
+    g = generate_ellipsoid(volume=vv, axis_ratio=rat, image_size=isz )
+    g = ants.copy_image_info( image, g )
+    affreg = antspymm.tra_initializer( fixed=g, moving=image, n_simulations=32, max_rotation=60, transform=[ 'rigid','affine'], compreg=None, verbose=True)
+    return affreg['fwdtransforms']
+
+
 
 def auto_subdivide_left_right_anatomy(
     image=None,
@@ -1316,12 +1347,18 @@ def auto_subdivide_left_right_anatomy(
     segbb2 = ants.crop_image(segb2, ants.iMath(segb2, 'MD', dilation_radius))
 
     # Register the second label region to the first
-    affreg = ants.registration(segbb2, segbb, 'Affine')
-    segbb2aff = affreg['warpedfixout']
+    # affreg = ants.registration(segbb2, segbb, 'Similarity')
+#    affreg = ants.affine_initializer(segbb2, segbb, search_factor=10, 
+#        radian_fraction=0.05, use_principal_axis=True, 
+#        local_search_iterations=50, mask=None, txfn=None)
+    affreg = antspymm.tra_initializer( fixed=segbb2, moving=segbb, n_simulations=32, max_rotation=30, transform=[ 'rigid','affine'], compreg=None, verbose=True)
+
+    segbb2aff = ants.apply_transforms(  segbb, segbb2, transformlist=affreg['fwdtransforms'], whichtoinvert=[True] )
+#    ants.plot( segbb, segbb2aff, axis=2 )
 
     # Symmetrize the images
-    symm = ants.image_clone( segbb )
-    for j in range(4):
+    symm = segbb * 0.5 + segbb2aff * 0.5
+    for j in range(2):
         symm = symmetrize_image(
             symm,
             raxis=0,
@@ -1330,7 +1367,12 @@ def auto_subdivide_left_right_anatomy(
             gradient_step=gradient_step,
             initial_image=symm
         )
-        ants.plot( symm, crop=True, axis=2 )
+#        ants.plot( symm, crop=True, axis=2 )
+
+
+    toyaxisTx = align_to_y_axis( symm )
+    symm = ants.apply_transforms( symm, symm, toyaxisTx )
+    ants.plot( symm, axis=2, crop=True )
 
     # Perform SyN registration for each region
     reg = ants.registration(segbb, symm, 'SyN')
@@ -1354,3 +1396,64 @@ def auto_subdivide_left_right_anatomy(
     zz2og2=ants.apply_transforms( segb2, zz2og, rfl2segb2['fwdtransforms']+rfl['fwdtransforms'], interpolator='nearestNeighbor' )
 
     return zz2og, zz2og2, symm
+
+
+
+
+def principal_axis_and_rotation( image, target_axis):
+    """
+    Computes the principal axis of a binary object from its coordinates and calculates
+    the rotation matrix to align this principal axis with a user-defined axis.
+
+    Parameters:
+    ----------
+    image : antsimage
+    target_axis : ndarray
+        A 1D numpy array of shape (3,) defining the axis to which the principal axis should be aligned.
+
+    Returns:
+    -------
+    principal_axis : ndarray
+        A 1D numpy array of shape (3,) representing the principal axis of the binary object.
+    rotation_matrix : ndarray
+        A 2D numpy array of shape (3, 3) representing the rotation matrix to align the principal axis
+        with the target axis.
+
+    Notes:
+    ------
+    - The principal axis is computed as the eigenvector of the covariance matrix of the coordinates
+      corresponding to the largest eigenvalue.
+    - If the principal axis is already aligned with the target axis, the rotation matrix will be the identity matrix.
+    """
+
+    coords = ants.get_neighborhood_in_mask(image, image, radius=(0,0,0), physical_coordinates=True, spatial_info=True )['indices']
+    # Center the coordinates to compute the covariance matrix
+    centered_coords = coords - np.mean(coords, axis=0)
+    covariance_matrix = np.cov(centered_coords, rowvar=False)
+    
+    # Compute eigenvalues and eigenvectors
+    eigvals, eigvecs = np.linalg.eig(covariance_matrix)
+    
+    # Principal axis corresponds to the eigenvector with the largest eigenvalue
+    principal_axis = eigvecs[:, np.argmax(eigvals)]
+    
+    # Normalize target axis
+    target_axis = target_axis / np.linalg.norm(target_axis)
+    
+    # Compute the rotation matrix to align the principal axis with the target axis
+    v = np.cross(principal_axis, target_axis)
+    s = np.linalg.norm(v)
+    c = np.dot(principal_axis, target_axis)
+    if s == 0:  # Already aligned
+        rotation_matrix = np.eye(3)
+    else:
+        vx = np.array([
+            [0, -v[2], v[1]],
+            [v[2], 0, -v[0]],
+            [-v[1], v[0], 0]
+        ])
+        rotation_matrix = np.eye(3) + vx + vx @ vx * ((1 - c) / (s ** 2))
+    
+
+    mytx = ants.create_ants_transform(transform_type='AffineTransform', precision='float', dimension=3, matrix=rotation_matrix, offset=None, center=ants.get_center_of_mass(image))
+    return mytx

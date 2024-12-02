@@ -23,6 +23,7 @@ dependencies = [
     "antspyx>=0.4.2",
     "antspynet",
     "antspyt1w>=0.9.4",
+    "antspymm",
     "scikit-learn",
     "requests",
     "statsmodels",
