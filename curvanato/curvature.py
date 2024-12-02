@@ -1359,8 +1359,6 @@ def auto_subdivide_left_right_anatomy(
     anat2partitioned = segb2 * zz2og2
     return anat1partitioned, anat2partitioned
 
-
-
 #    segb2tx = principal_axis_and_rotation( segb2, [1,0,0])
 #    segb2tx_inv = ants.invert_ants_transform( segb2tx )
 #    segb2r = ants.apply_ants_transform_to_image( segb2tx, segb2, segb2, interpolation='nearestNeighbor')

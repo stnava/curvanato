@@ -5,7 +5,7 @@ import numpy as np
 #####
 image = ants.image_read("~/.antspymm/PPMI_template0_deep_cit168lab.nii.gz")
 #####
-x1=6
+x1=2
 xx=[x1,x1+16]
 output = curvanato.auto_subdivide_left_right_anatomy(
     image=image,
