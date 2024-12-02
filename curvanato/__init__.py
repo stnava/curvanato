@@ -31,5 +31,6 @@ from .curvature import generate_ellipsoid
 from .curvature import shape_eigenvalues
 from .curvature import symmetrize_image
 from .curvature import auto_subdivide_left_right_anatomy
+from .curvature import auto_subdivide_left_right_anatomy2
 from .curvature import align_to_y_axis
 from .curvature import principal_axis_and_rotation

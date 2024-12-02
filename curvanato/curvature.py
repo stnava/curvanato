@@ -1515,3 +1515,122 @@ def principal_axis_and_rotation(image, target_axis):
     )
 
     return mytx
+
+
+def auto_subdivide_left_right_anatomy2(
+    image=None,
+    label1=1,
+    label2=17,
+    dilation_radius=16,
+    partition_dilation=6,
+    partition_axis=1,
+    partition_k=3
+):
+    """
+    Process and symmetrize putamen images and generate two outputs, zz2og and zz2og2.
+
+    Parameters
+    ----------
+    image : antsImage, optional
+        Path to the image containing the segmentation labels. Defaults to "~/.antspymm/PPMI_template0_deep_cit168lab.nii.gz".
+    label1 : int, optional
+        Label for the first region (e.g., putamen). Defaults to 1.
+    label2 : int, optional
+        Label for the second region (e.g., putamen). Defaults to 17.
+    dilation_radius : int, optional
+        Dilation radius for morphological dilation during segmentation processing. Defaults to 16.
+    partition_dilation : int, optional
+        Dilation radius for partitioning. Defaults to 6.
+    partition_axis : int, optional
+        Axis along which to partition the symmetrized image. Defaults to 1.
+    partition_k : int, optional
+        Number of partitions for the symmetrized image. Defaults to 3.
+
+    Returns
+    -------
+    tuple
+        best_anat1partitioned : ants.ANTsImage
+            Partitioned image for the first label with the best axis.
+        best_anat2partitioned : ants.ANTsImage
+            Partitioned image for the second label with the best axis.
+        best_axis : list
+            The target axis that produced the most even distribution.
+    """
+    # Load and threshold the input image for the first label
+    if image is None:
+        image_path = "~/.antspymm/PPMI_template0_deep_cit168lab.nii.gz"
+        image = ants.image_read(image_path)
+
+    # Threshold images for labels
+    segb = ants.threshold_image(image, label1, label1).iMath("GetLargestComponent")
+    segb2 = ants.threshold_image(image, label2, label2).iMath("GetLargestComponent")
+
+    # Define candidate axes
+    candidate_axes = [np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 1])]
+
+    best_score = float("inf")
+    best_anat1partitioned = None
+    best_anat2partitioned = None
+    best_axis = None
+
+    # Loop through candidate axes to find the best axis
+    for axis in candidate_axes:
+        segbtx = principal_axis_and_rotation(segb, axis)
+        segbtx_inv = ants.invert_ants_transform(segbtx)
+        segbr = ants.apply_ants_transform_to_image(
+            segbtx, segb, segb, interpolation="nearestNeighbor"
+        )
+        segbb = ants.crop_image(segbr, ants.iMath(segbr, "MD", dilation_radius))
+        zz = auto_partition_image(
+            ants.iMath(segbb, "MD", partition_dilation),
+            axis=partition_axis,
+            k=partition_k,
+        )
+        zz2origspace = ants.apply_ants_transform_to_image(
+            segbtx_inv, zz, segb, interpolation="nearestNeighbor"
+        )
+        anat1partitioned = segb * zz2origspace
+        anat1partitioned = ants.iMath(
+            segb, "PropagateLabelsThroughMask", anat1partitioned, 200000, 0
+        )
+
+        rfl = ants.reflect_image(
+            ants.crop_image(segb, ants.iMath(segb, "MD", 12)), axis=0, tx="Rigid"
+        )
+        rfl2segb2 = antspymm.tra_initializer( 
+            fixed=ants.crop_image(segb2, ants.iMath(segb2, "MD", 12)), 
+            moving=rfl["warpedmovout"], 
+            n_simulations=32, max_rotation=30, 
+            transform=[ 'rigid','SyN'], compreg=None, verbose=True)
+
+#        rfl2segb2 = ants.registration(
+#            ants.crop_image(segb2, ants.iMath(segb2, "MD", 12)),
+#            rfl["warpedmovout"],
+#            "antsRegistrationSyNQuickRepro[s]",
+#        )
+        zz2og2 = ants.apply_transforms(
+            segb2,
+            zz2origspace,
+            rfl2segb2["fwdtransforms"] + rfl["fwdtransforms"],
+            interpolator="nearestNeighbor",
+        )
+        anat2partitioned = segb2 * zz2og2
+        anat2partitioned = ants.iMath(
+            segb2, "PropagateLabelsThroughMask", anat2partitioned, 200000, 0
+        )
+
+        # Calculate distribution evenness
+        labels1, counts1 = np.unique(anat1partitioned.numpy(), return_counts=True)
+        labels2, counts2 = np.unique(anat2partitioned.numpy(), return_counts=True)
+        score1 = np.abs(np.std(counts1)) + np.abs(np.std(counts2))
+        score2 = np.abs( np.abs(np.std(counts1)) - np.abs(np.std(counts2)))
+        score = score1 + score2*1.0
+
+        # Update best partition if the current score is better
+        if score < best_score:
+            best_score = score
+            best_anat1partitioned = anat1partitioned
+            best_anat2partitioned = anat2partitioned
+            best_axis = axis.tolist()
+
+    return best_anat1partitioned, best_anat2partitioned, best_axis
