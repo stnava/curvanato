@@ -98,7 +98,7 @@ if leftside:
     ants.plot( xx[0], xx[1], crop=True, axis=2, nslices=21, ncol=7, filename=ccfn[5] )
     for j in range(3):
         ants.image_write( xx[j], ccfn[j] )
-    xx[2].to_csv( ccfn[3] )
+    xx[3].to_csv( ccfn[3] )
 
 
 
