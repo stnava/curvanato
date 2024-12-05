@@ -7,6 +7,7 @@ import os  # For checking file existence
 import pandas as pd
 import numpy as np
 os.environ["ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS"] = "32"
+# ANTPD data from open neuro
 fn='.//bids/sub-RC4111/ses-1/anat/sub-RC4111_ses-1_T1w.nii.gz' # easy
 fn='.//bids/sub-RC4103/ses-1/anat/sub-RC4103_ses-1_T1w.nii.gz'
 fn='./bids//sub-RC4110/ses-2/anat/sub-RC4110_ses-2_T1w.nii.gz'
@@ -22,7 +23,6 @@ if os.path.exists(fn):
     if not os.path.exists(citfn):
         t1b = antspynet.brain_extraction( t1, modality="t1threetissue" )['segmentation_image'].threshold_image(1,1)
         t1r = ants.rank_intensity( t1 * t1b )
-#        antskm = ants.kmeans_segmentation(t1r, 2, kmask=t1b, mrf=0.1)['']
         cit = antspyt1w.deep_cit168( t1r, verbose=True)['segmentation']
         ants.image_write( cit, citfn)
     cit = ants.image_read( citfn )
@@ -31,8 +31,6 @@ if os.path.exists(fn):
 ###################################################################################
 ###################################################################################
 ###################################################################################
-fn="/tmp/PPMI-100018-20210202-T1wHierarchical-1497578-deep_cit168lab.nii.gz"
-cit=ants.image_read(fn)
 ctype='cit'
 tcaudL=curvanato.load_labeled_caudate( option='hmt', binarize=False, label=[1,3,5] )
 tcaudR=curvanato.load_labeled_caudate( option='hmt', binarize=False, label=[2,4,6] )
