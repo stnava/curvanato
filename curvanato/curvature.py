@@ -269,7 +269,8 @@ def load_labeled_caudate(label=[1, 2], subdivide=0, grid=0, option='laterality',
     grid : int, optional
         Grid size with which to subdivide the labels for finer segmentation. Default is 0.
     option: string
-        either laterality or hmt (head, midbody, tail)
+        either fs (a freesurfer example), laterality or hmt (head, midbody, tail);
+        fs will just return an image without other processing
     binarize : bool, optional
         If `True`, binarizes the image. Default is True.
     verbose : bool, optional
@@ -300,6 +301,11 @@ def load_labeled_caudate(label=[1, 2], subdivide=0, grid=0, option='laterality',
         nifti_path = pkg_resources.resource_filename(
             "curvanato", "data/labeled_caudate_medial_vs_lateral.nii.gz"
         )
+    elif option == 'fs' :
+        nifti_path = pkg_resources.resource_filename(
+            "curvanato", "data/caud_vent.nii.gz"
+        )
+        return ants.image_read( nifti_path )
     else:
         nifti_path = pkg_resources.resource_filename(
             "curvanato", "data/labeled_caudate_head_mid_tail.nii.gz"
