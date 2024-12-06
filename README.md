@@ -112,4 +112,10 @@ this package has been tested on [ANTPD data from openneuro](https://openneuro.or
 could also try data [here](https://openneuro.org/datasets/ds004560/versions/1.0.1) which included repeated T1w acquisitions on same subjects but with different parameters.    however, last time i tried this, the link was not working.
 
 
+```
+rm -r -f build/ curvanato.egg-info/ dist/
+python3 -m  build .
+python3 -m pip install --upgrade twine
+python3 -m twine upload --repository antspyt1w dist/*
+```
 
