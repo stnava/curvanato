@@ -116,6 +116,6 @@ could also try data [here](https://openneuro.org/datasets/ds004560/versions/1.0.
 rm -r -f build/ curvanato.egg-info/ dist/
 python3 -m  build .
 python3 -m pip install --upgrade twine
-python3 -m twine upload --repository antspyt1w dist/*
+python3 -m twine upload --repository curvanato dist/*
 ```
 
