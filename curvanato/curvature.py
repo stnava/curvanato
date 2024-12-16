@@ -769,9 +769,9 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
 
     Returns:
     -------
-    ants.ANTsImage
-        A labeled ANTsImage with curvature-adjusted labels mapped to the target.
-
+    tuple curvitr, labeled, mykk, descriptor corresponding to curvature image, labels, thickness 
+    image and a summary descriptor data frame
+    
     Examples:
     --------
     >>> import ants
@@ -779,7 +779,6 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
     >>> t1_image = ants.image_read("subject_t1.nii.gz")
     >>> result = t1w_caudcurv(t1_image, target_label=9, prior_labels=[1, 2], subdivide=2)
     >>> print(result)
-    ANTsImage (type: integer)
 
     Notes:
     -----
