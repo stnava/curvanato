@@ -522,13 +522,12 @@ def image_gradient(image, sigma = 0.25 ):
 
     return gradient_dict
 
-def cluster_image_gradient(image, binary_image, n_clusters=2, sigma=0.5, random_state=None):
+def cluster_image_gradient(image, n_clusters=2, sigma=0.5, random_state=None):
     """
     Computes the gradient of an image and performs k-means clustering on the gradient.
     
     Parameters:
     - image: ANTsPy image. Input image to process.  could be a distance map.
-    - binary_image: ANTsPy image. Input image to process. binary.
     - n_clusters: int. Number of clusters for k-means.
     - sigma: physical coordinate sigma for smoothing the gradient
     - random_state: int or None. Random state for reproducibility.
@@ -839,7 +838,7 @@ def t1w_caudcurv( segmentation, target_label=9, ventricle_label=None, prior_labe
         labeledTemp = remove_curvature_spine( curvitr, labeled )
         for myrandstate in list(range(searchrange)):
             isbest=False
-            imggk=cluster_image_gradient( binaryimager, binaryimager, n_clusters=2, sigma=0.0, random_state=myrandstate) * binaryimager 
+            imggk=cluster_image_gradient( binaryimager, n_clusters=2, sigma=0.0, random_state=myrandstate) * binaryimager 
             #, spatial_prior = labeled ) * binaryimager 
             imggk = ants.iMath( binaryimager, "PropagateLabelsThroughMask", imggk, 200000, 0 )
             sum2 = ants.label_overlap_measures(ants.threshold_image(imggk,2,2), labeledTemp) .MeanOverlap[0]
@@ -1076,7 +1075,7 @@ def cluster_image_gradient_prop(binary_image, n_clusters=2, sigma=0.25):
     Returns:
     - clustered_image: ANTsPy image. Image with clustered gradient.
     """
-    imggk = cluster_image_gradient(binary_image, binary_image, n_clusters=n_clusters, sigma=sigma)
+    imggk = cluster_image_gradient(binary_image, n_clusters=n_clusters, sigma=sigma)
     return ants.iMath(binary_image, "PropagateLabelsThroughMask", imggk, 200000, 0)
 
 def determine_dominant_cluster(clustered_image, labeled):
