@@ -561,11 +561,11 @@ def cluster_image_gradient(image, n_clusters=2, sigma=0.5, random_state=None):
     label_image_np = labels.reshape(image.shape)
     
     # Convert the label array back to an ANTs image
-    import numpy as np
-    print( np.unique( label_image_np ) )
+#    import numpy as np
+#    print( np.unique( label_image_np ) )
 #    clustered_image = ants.from_numpy( label_image_np )
     clustered_image = ants.from_numpy(label_image_np.astype(np.float32) )
-    print( np.unique( clustered_image.numpy() ) )
+#    print( np.unique( clustered_image.numpy() ) )
     clustered_image = ants.copy_image_info( image, clustered_image )
     return clustered_image
 
