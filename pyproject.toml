@@ -4,18 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "curvanato"
-version = "1.1.0"
+version = "1.2.0"
 description = "Anatomical curvature processing for medical images."
 readme = "README.md"
 authors = [
     {name = "Brian B. Avants", email = "stnava@gmail.com"},
     {name = "Dorian Pustina"}
 ]
-license = {text = "Apache License 2.0"}
 keywords = ["curvanato", "caudate", "medical image processing"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
@@ -34,12 +32,7 @@ dependencies = [
 homepage = "https://github.com/stnava/curvanato"
 
 [tool.setuptools.packages]
-find = { include = ["curvanato","curvanato.*"] }
-
-
-[tool.setuptools]
-include-package-data = true  # Ensures package data is included
+find = { include = ["curvanato", "curvanato.*"] }
 
 [tool.setuptools.package-data]
-"curvanato" = ["data/*"]
-
+"curvanato" = ["data/*", "LICENSE"]  
