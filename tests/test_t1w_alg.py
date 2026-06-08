@@ -6,6 +6,10 @@ import re
 import os  # For checking file existence
 import pandas as pd
 import numpy as np
+import pytest
+import os
+if not os.path.exists('.//bids/sub-RC4111/ses-1/anat/sub-RC4111_ses-1_T1w.nii.gz'):
+    pytest.skip("Test data not found", allow_module_level=True)
 fn='.//bids/sub-RC4111/ses-1/anat/sub-RC4111_ses-1_T1w.nii.gz' # easy
 fn='.//bids/sub-RC4103/ses-1/anat/sub-RC4103_ses-1_T1w.nii.gz'
 fn='./bids//sub-RC4110/ses-2/anat/sub-RC4110_ses-2_T1w.nii.gz'

@@ -132,12 +132,12 @@ def skeletonize_topo(x, laplacian_threshold=0.30, propagation_option=2 ):
 
 def skeletonize( x ):
     import numpy as np
-    from skimage.morphology import skeletonize_3d
+    from skimage.morphology import skeletonize
     import nibabel as nib  # For loading and saving NIfTI images
     # Ensure the image is binary (0s and 1s)
     binary_image = (x.numpy() > 0).astype(np.uint8)
     # Apply 3D skeletonization
-    skeleton = ants.from_numpy( skeletonize_3d(binary_image) )
+    skeleton = ants.from_numpy( skeletonize(binary_image) )
     return ants.copy_image_info( x, skeleton )
 
 
@@ -1564,7 +1564,7 @@ def parc_objective(segmentation, principal_axis):
     # Smoothness Score: Sum of boundary gradients
     smoothness_score = 0
     for label_id in unique_labels:
-        binary_mask = (segmentation == label_id)
+        binary_mask = (segmentation == label_id).astype(float)
         gradient_magnitude = np.sqrt(
             sobel(binary_mask, axis=0, mode='constant')**2 +
             sobel(binary_mask, axis=1, mode='constant')**2 +
@@ -1745,3 +1745,54 @@ def auto_subdivide_left_right_anatomy2(
             best_axis = axis.copy()
 
     return best_anat1partitioned, best_anat2partitioned, best_axis
+
+def subdivide_by_medial_axis(binary_image, reference_axis=[1, 0, 0]):
+    """
+    Subdivides a binary image into two halves along its medial axis 
+    (skeleton) using a reference axis to define 'left' and 'right'.
+    """
+    import numpy as np
+    import ants
+    from scipy.spatial import cKDTree
+    
+    skeleton = skeletonize(binary_image)
+    skel_coords = np.argwhere(skeleton.numpy() > 0)
+    obj_coords = np.argwhere(binary_image.numpy() > 0)
+    
+    if len(skel_coords) == 0:
+        return binary_image * 0
+        
+    direction = np.array(binary_image.direction)
+    spacing = np.array(binary_image.spacing)
+    origin = np.array(binary_image.origin)
+    
+    def to_physical(coords):
+        return (coords * spacing) @ direction.T + origin
+        
+    skel_phys = to_physical(skel_coords)
+    obj_phys = to_physical(obj_coords)
+    
+    tree = cKDTree(skel_phys)
+    _, indices = tree.query(obj_phys)
+    closest_skel_phys = skel_phys[indices]
+    
+    vectors = obj_phys - closest_skel_phys
+    
+    ref_axis = np.array(reference_axis)
+    if np.linalg.norm(ref_axis) > 0:
+        ref_axis = ref_axis / np.linalg.norm(ref_axis)
+    
+    projections = np.dot(vectors, ref_axis)
+    
+    out_numpy = np.zeros_like(binary_image.numpy())
+    pos_mask = projections > 0
+    neg_mask = projections <= 0
+    
+    out_numpy[tuple(obj_coords[pos_mask].T)] = 1
+    out_numpy[tuple(obj_coords[neg_mask].T)] = 2
+    
+    out_image = ants.from_numpy(out_numpy)
+    out_image = ants.copy_image_info(binary_image, out_image)
+    
+    return out_image
+
