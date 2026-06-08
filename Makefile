@@ -10,7 +10,7 @@ clean:
 	rm -f ex_control.png ex_disease.png boxplot.png population_report.html
 
 test:
-	python3 -m pytest tests/
+	python3 -m pytest -v -s --cov=curvanato --cov-report=term-missing tests/
 
 docs:
 	@echo "Documentation generation not fully configured."
