@@ -155,4 +155,4 @@ plt.legend(fontsize=12)
 
 # Show the plot
 plt.tight_layout()
-plt.show()
+# plt.show()

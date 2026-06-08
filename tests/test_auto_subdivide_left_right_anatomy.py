@@ -28,5 +28,5 @@ for x1 in list( range(1,7 ) ):
             print( str(x1) + " auto-axis ")
             if len(output)>2:
                 print( output[2] )
-            ants.plot(seg1b,output[0],axis=2,crop=True)
-            ants.plot(seg2b,output[1],axis=2,crop=True)
+            # ants.plot(seg1b,output[0],axis=2,crop=True)
+            # ants.plot(seg2b,output[1],axis=2,crop=True)

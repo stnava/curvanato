@@ -56,11 +56,11 @@ curvitr = ants.resample_image_to_target( curvit, labeled, interp_type='linear' )
 binaryimager = ants.resample_image_to_target( binaryimage, labeled, interp_type='nearestNeighbor' )
 imgd = curvanato.compute_distance_map( binaryimager )
 imgg = curvanato.image_gradient( binaryimager )
-ants.plot( binaryimager, labeledlat, axis=2, crop=True )
+# ants.plot( binaryimager, labeledlat, axis=2, crop=True )
 imggk=curvanato.cluster_image_gradient( binaryimager, binaryimager, 
     n_clusters=2, sigma=0.0, random_state=0 ) * binaryimager 
 imggk = ants.iMath( binaryimager, "PropagateLabelsThroughMask", imggk, 200000, 0 )
-ants.plot( binaryimager, labeled, crop=True, axis=2 )
+# ants.plot( binaryimager, labeled, crop=True, axis=2 )
 sum2 = (ants.threshold_image(imggk,2,2) * labeled ).sum()
 sum1 = (ants.threshold_image(imggk,1,1) * labeled ).sum()
 if ( sum1 > sum2 ) :
@@ -74,7 +74,7 @@ sidelabelRm = curvanato.remove_curvature_spine( curvitr,
 labeled = ants.iMath( sidelabelRm * ants.threshold_image(imggk,kmeansLabel,kmeansLabel), 
         "PropagateLabelsThroughMask", 
         labeled * ants.threshold_image(imggk,kmeansLabel,kmeansLabel), 200000, 0 )
-ants.plot( binaryimager, labeled, crop=True, axis=2 )
+# ants.plot( binaryimager, labeled, crop=True, axis=2 )
 mydf = curvanato.make_label_dataframe( labeled )
 labeled[ curvitr == 0 ] = 0.0
 ants.image_write( curvitr, '/tmp/curvitr.nii.gz' )

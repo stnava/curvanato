@@ -28,7 +28,7 @@ segc = ants.crop_image( caud, ants.iMath(caud,'MD',5))
 imgd = curvanato.compute_distance_map( segc )
 imggk=curvanato.cluster_image_gradient( imgd, segc, n_clusters=2, sigma=0.25) * segc 
 imggk = ants.iMath( segc, "PropagateLabelsThroughMask", imggk, 200000, 0 )
-ants.plot( segc, imggk, axis=2 )
+# ants.plot( segc, imggk, axis=2 )
 mykk = curvanato.shape_split_thickness( imggk, g=1, w=2, verbose=True )
 ants.image_write( imggk, '/tmp/temp.nii.gz')
 ants.image_write( mykk, '/tmp/tempk.nii.gz')
