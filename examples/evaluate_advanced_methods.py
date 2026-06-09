@@ -443,6 +443,10 @@ def main():
     # Save the output CSV files for easy inclusion in report
     df_perf.to_csv('/Users/stnava/.gemini/antigravity-cli/brain/48e3cac2-5675-4b9b-a9ed-5d1015a88987/figs/performance_results.csv', index=False)
     df_stats.to_csv('/Users/stnava/.gemini/antigravity-cli/brain/48e3cac2-5675-4b9b-a9ed-5d1015a88987/figs/statistical_results.csv', index=False)
+    
+    # Save the raw 2D grids for unified plotting
+    np.save('/Users/stnava/.gemini/antigravity-cli/brain/48e3cac2-5675-4b9b-a9ed-5d1015a88987/figs/grids_curv_advanced.npy', grids_curv)
+    np.save('/Users/stnava/.gemini/antigravity-cli/brain/48e3cac2-5675-4b9b-a9ed-5d1015a88987/figs/grids_thick_advanced.npy', grids_thick)
 
 if __name__ == "__main__":
     main()
