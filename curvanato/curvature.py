@@ -1857,3 +1857,33 @@ def subdivide_by_medial_axis(binary_image, reference_axis=[1, 0, 0],
     
     return out_image
 
+def template_driven_partition(subject_image, template_image, template_patch, transform_type='SyNOnly'):
+    """
+    Registers a template image to a subject image, and warps a template patch parameterization
+    into the subject's coordinate space.
+    
+    Arguments
+    ---------
+    subject_image : ANTsImage
+        Fixed image in native subject space.
+    template_image : ANTsImage
+        Moving image in template space (e.g. base_caud_hr).
+    template_patch : sulceye.CorticalPatch
+        Patch object computed in template space.
+    transform_type : string
+        ANTs registration transform type (defaults to 'SyNOnly').
+        
+    Returns
+    -------
+    warped_patch : sulceye.CorticalPatch
+        The warped patch in subject space.
+    fwd_transforms : list of strings
+        Registration forward transforms (template to subject).
+    inv_transforms : list of strings
+        Registration inverse transforms (subject to template).
+    """
+    import ants
+    reg = ants.registration(fixed=subject_image, moving=template_image, type_of_transform=transform_type)
+    warped_patch = template_patch.warp(reg['invtransforms'])
+    return warped_patch, reg['fwdtransforms'], reg['invtransforms']
+
