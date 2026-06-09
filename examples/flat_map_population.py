@@ -127,10 +127,10 @@ def main():
         # FWE Correction (Holm-Bonferroni)
         p_flat = p_val.flatten()
         valid_mask = ~np.isnan(p_flat)
-        reject_valid, pvals_corrected_valid, _, _ = multipletests(p_flat[valid_mask], alpha=0.05, method='holm')
-        
         reject = np.zeros_like(p_flat, dtype=bool)
-        reject[valid_mask] = reject_valid
+        if len(p_flat[valid_mask]) > 0:
+            reject_valid, pvals_corrected_valid, _, _ = multipletests(p_flat[valid_mask], alpha=0.05, method='holm')
+            reject[valid_mask] = reject_valid
         sig_mask = reject.reshape(p_val.shape)
         
         ax = axes[row]

@@ -50,11 +50,22 @@ def spectral_mesh_smoothing(vertices, faces, k=35):
     A.data = np.ones_like(A.data)
     
     degrees = np.array(A.sum(axis=1)).flatten()
-    D = sp.diags(degrees)
-    L = D - A
+    degrees[degrees == 0] = 1.0
+    d_inv_sqrt = 1.0 / np.sqrt(degrees)
+    D_inv_sqrt = sp.diags(d_inv_sqrt)
     
-    eigenvalues, U = eigsh(L, k=k, which='SM')
-    vertices_smooth = U @ (U.T @ vertices)
+    L_un = sp.diags(degrees) - A
+    L_norm = D_inv_sqrt @ L_un @ D_inv_sqrt
+    
+    # Use shift-invert solver for stability
+    eigenvalues, U = eigsh(L_norm, k=k, sigma=1e-6, which='LM')
+    
+    d_sqrt = 1.0 / d_inv_sqrt
+    D_sqrt = sp.diags(d_sqrt)
+    D_inv_sqrt = sp.diags(d_inv_sqrt)
+    
+    # Project: V_smooth = D^{-1/2} U U^T D^{1/2} V
+    vertices_smooth = D_inv_sqrt @ (U @ (U.T @ (D_sqrt @ vertices)))
     return vertices_smooth
 
 def voxelize_mesh(vertices_phys, faces, reference_image):
@@ -72,7 +83,9 @@ def voxelize_mesh(vertices_phys, faces, reference_image):
     
     dirs = grid_phys - vertices_phys[indices]
     dot_prods = np.sum(dirs * normals_phys[indices], axis=1)
-    inside = dot_prods <= 0.0
+    
+    # Require dot product <= 0 AND distance to nearest vertex is small (e.g., < 4.0 mm)
+    inside = (dot_prods <= 0.0) & (dists < 4.0)
     
     binary_np = np.zeros(shape, dtype=np.float32)
     binary_np[tuple(grid_indices[inside].T)] = 1.0
@@ -160,7 +173,7 @@ def main():
         base_caud_hr_smooth, reference_axis=[1,0,0], prune_skeleton=True,
         smooth_projection_sigma=0.5, mrf_smoothing_sigma=0.5
     )
-    template_patches = sulceye.generate_patches_from_volume(template_subdiv_smooth)
+    template_patches = sulceye.generate_patches_from_volume(template_subdiv_smooth, method='spectral')
     template_patch_smooth = template_patches[1]
     
     # Storage for results
@@ -271,10 +284,10 @@ def main():
         
         p_flat = p_val.flatten()
         valid_mask = ~np.isnan(p_flat)
-        reject_valid, _, _, _ = multipletests(p_flat[valid_mask], alpha=0.05, method='holm')
-        
         reject = np.zeros_like(p_flat, dtype=bool)
-        reject[valid_mask] = reject_valid
+        if len(p_flat[valid_mask]) > 0:
+            reject_valid, _, _, _ = multipletests(p_flat[valid_mask], alpha=0.05, method='holm')
+            reject[valid_mask] = reject_valid
         sig_mask = reject.reshape(p_val.shape)
         
         t_plot = t_stat.copy()

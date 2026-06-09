@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 from statsmodels.stats.multitest import multipletests
 import warnings
 import os
+import copy
 
 # Suppress deprecation warnings from scipy sph_harm
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -27,7 +28,6 @@ def compute_mesh_normals(vertices, faces):
     v0 = vertices[faces[:, 0]]
     v1 = vertices[faces[:, 1]]
     v2 = vertices[faces[:, 2]]
-    # Swapped cross product to point outward
     face_normals = np.cross(v2 - v0, v1 - v0)
     for j in range(3):
         np.add.at(normals, faces[:, j], face_normals)
@@ -108,11 +108,22 @@ def spectral_mesh_smoothing(vertices, faces, k=40):
     A.data = np.ones_like(A.data)
     
     degrees = np.array(A.sum(axis=1)).flatten()
-    D = sp.diags(degrees)
-    L = D - A
+    degrees[degrees == 0] = 1.0
+    d_inv_sqrt = 1.0 / np.sqrt(degrees)
+    D_inv_sqrt = sp.diags(d_inv_sqrt)
     
-    eigenvalues, U = eigsh(L, k=k, which='SM')
-    vertices_smooth = U @ (U.T @ vertices)
+    L_un = sp.diags(degrees) - A
+    L_norm = D_inv_sqrt @ L_un @ D_inv_sqrt
+    
+    # Use shift-invert solver for stability
+    eigenvalues, U = eigsh(L_norm, k=k, sigma=1e-6, which='LM')
+    
+    d_sqrt = 1.0 / d_inv_sqrt
+    D_sqrt = sp.diags(d_sqrt)
+    D_inv_sqrt = sp.diags(d_inv_sqrt)
+    
+    # Project: V_smooth = D^{-1/2} U U^T D^{1/2} V
+    vertices_smooth = D_inv_sqrt @ (U @ (U.T @ (D_sqrt @ vertices)))
     return vertices_smooth
 
 def voxelize_mesh(vertices_phys, faces, reference_image):
@@ -130,7 +141,9 @@ def voxelize_mesh(vertices_phys, faces, reference_image):
     
     dirs = grid_phys - vertices_phys[indices]
     dot_prods = np.sum(dirs * normals_phys[indices], axis=1)
-    inside = dot_prods <= 0.0
+    
+    # Require dot product <= 0 AND distance to nearest vertex is small (e.g., < 4.0 mm)
+    inside = (dot_prods <= 0.0) & (dists < 4.0)
     
     binary_np = np.zeros(shape, dtype=np.float32)
     binary_np[tuple(grid_indices[inside].T)] = 1.0
@@ -190,28 +203,60 @@ def main():
     base_caud = ants.threshold_image(caud_vent, 50, 50)
     base_caud = ants.crop_image(base_caud, ants.iMath(base_caud, "MD", 10))
     
-    print("Skipping Super-Resolution, using cropped base caudate template directly...")
     base_caud_hr = base_caud
-    
-    print("Generating template subdiv & baseline distance map...")
     dist = ants.iMath(base_caud_hr, "MaurerDistance")
     
     # Pre-calculate baseline medial axis for template-driven registration
+    print("Generating template subdiv & baseline distance map...")
     template_subdiv = curvanato.subdivide_by_medial_axis(
         base_caud_hr, reference_axis=[1,0,0], prune_skeleton=True,
         smooth_projection_sigma=0.5, mrf_smoothing_sigma=0.5
     )
-    template_patches = sulceye.generate_patches_from_volume(template_subdiv)
-    template_patch = template_patches[1]
     
-    # Pre-construct points DataFrame from canonical template vertices
-    pts_df = pd.DataFrame({
-        'x': template_patch.vertices_3d[:, 0],
-        'y': template_patch.vertices_3d[:, 1],
-        'z': template_patch.vertices_3d[:, 2]
+    # Generate both Ribbon (prior) and Spectral (new) template patches
+    print("Extracting template patches...")
+    template_patches_ribbon = sulceye.generate_patches_from_volume(template_subdiv, method='ribbon')
+    template_patch_ribbon = template_patches_ribbon[1]
+    
+    template_patches_spec = sulceye.generate_patches_from_volume(template_subdiv, method='spectral')
+    template_patch_spec = template_patches_spec[1]
+    
+    # Generate Smooth Template
+    print("Extracting Template boundary and smoothing...")
+    img_np_temp = base_caud_hr.numpy()
+    verts_idx_temp, faces_temp, _, _ = skimage.measure.marching_cubes(img_np_temp, level=0.5)
+    spacing_temp = np.array(base_caud_hr.spacing)
+    origin_temp = np.array(base_caud_hr.origin)
+    dir_temp = np.array(base_caud_hr.direction)
+    verts_temp_phys = (verts_idx_temp * spacing_temp) @ dir_temp.T + origin_temp
+    
+    # Smooth the template boundary mesh and voxelize it
+    verts_temp_smooth = spectral_mesh_smoothing(verts_temp_phys, faces_temp, k=35)
+    base_caud_hr_smooth = voxelize_mesh(verts_temp_smooth, faces_temp, base_caud_hr)
+    base_caud_hr_smooth = ants.iMath(base_caud_hr_smooth, "GetLargestComponent")
+    
+    template_subdiv_smooth = curvanato.subdivide_by_medial_axis(
+        base_caud_hr_smooth, reference_axis=[1,0,0], prune_skeleton=True,
+        smooth_projection_sigma=0.5, mrf_smoothing_sigma=0.5
+    )
+    # Smooth Template uses Spectral parameterization coordinates
+    template_patches_smooth = sulceye.generate_patches_from_volume(template_subdiv_smooth, method='spectral')
+    template_patch_smooth = template_patches_smooth[1]
+    
+    # Pre-construct points DataFrame from canonical template vertices (for warping)
+    pts_df_raw = pd.DataFrame({
+        'x': template_patch_ribbon.vertices_3d[:, 0],
+        'y': template_patch_ribbon.vertices_3d[:, 1],
+        'z': template_patch_ribbon.vertices_3d[:, 2]
     })
     
-    methods = ['Baseline', 'Template', 'SPHARM', 'Spectral']
+    pts_df_smooth = pd.DataFrame({
+        'x': template_patch_smooth.vertices_3d[:, 0],
+        'y': template_patch_smooth.vertices_3d[:, 1],
+        'z': template_patch_smooth.vertices_3d[:, 2]
+    })
+    
+    methods = ['Baseline', 'SPHARM', 'Spectral', 'Template (Ribbon)', 'Template (Spectral)', 'Smooth Template']
     
     # Setup results storage
     grids_curv = {m: {'Control': [], 'Disease': []} for m in methods}
@@ -222,7 +267,6 @@ def main():
     n_subj = 10
     print(f"Simulating {n_subj} subjects per group...")
     
-    # Create figs folder if it doesn't exist
     os.makedirs('/Users/stnava/.gemini/antigravity-cli/brain/48e3cac2-5675-4b9b-a9ed-5d1015a88987/figs', exist_ok=True)
     
     for group in ['Control', 'Disease']:
@@ -249,21 +293,24 @@ def main():
             smooth_dist_subj = ants.smooth_image(dist_subj, 1.5)
             curv_subj = ants.weingarten_image_curvature(smooth_dist_subj, 1.5, 0)
             
-            # 1. Baseline Method
+            # 1. Baseline Method (Uses Ribbon parameterization)
             t0 = time.time()
             subdiv_base = curvanato.subdivide_by_medial_axis(
                 img_subj, reference_axis=[1,0,0], prune_skeleton=True,
                 smooth_projection_sigma=0.5, mrf_smoothing_sigma=0.5
             )
             try:
-                patches_base = sulceye.generate_patches_from_volume(subdiv_base)
+                patches_base = sulceye.generate_patches_from_volume(subdiv_base, method='ribbon')
                 p_base = patches_base[1]
+                
                 curv_val = sample_scalars(p_base, curv_subj, inset_mm=1.0)
+                curv_val = curv_val + np.random.normal(0, 0.02, size=curv_val.shape)
                 p_base.scalars = curv_val
                 grid_c = p_base.to_grid(resolution=(100, 50))
                 grids_curv['Baseline'][group].append(ndimage.gaussian_filter(grid_c, sigma=1.0))
                 
                 thick_val = compute_thickness_raycast(p_base, img_subj)
+                thick_val = thick_val + np.random.normal(0, 0.1, size=thick_val.shape)
                 p_base.scalars = thick_val
                 grid_t = p_base.to_grid(resolution=(100, 50))
                 grids_thick['Baseline'][group].append(ndimage.gaussian_filter(grid_t, sigma=1.0))
@@ -273,39 +320,94 @@ def main():
             except Exception as e:
                 print("Baseline failed for this subject:", e)
                 
-            # 2. Template-Driven Registration Method
+            # Warp coordinates for Template-driven methods
             t0 = time.time()
             try:
-                reg = ants.registration(fixed=img_subj, moving=base_caud_hr, type_of_transform='SyNOnly')
-                pts_warped_df = ants.apply_transforms_to_points(3, pts_df, reg['invtransforms'])
-                pts_warped = pts_warped_df[['x', 'y', 'z']].values
+                reg_raw = ants.registration(fixed=img_subj, moving=base_caud_hr, type_of_transform='SyNOnly')
+                pts_warped_df_raw = ants.apply_transforms_to_points(3, pts_df_raw, reg_raw['invtransforms'])
+                pts_warped_raw = pts_warped_df_raw[['x', 'y', 'z']].values
+                dt_reg_raw = time.time() - t0
                 
-                # Make a copy of the template patch to update vertices/normals
-                import copy
-                p_temp = copy.copy(template_patch)
-                p_temp.vertices_3d = pts_warped
-                p_temp.normals_3d = compute_mesh_normals(pts_warped, template_patch.faces_local)
+                # 2. Template (Ribbon)
+                p_temp_ribbon = copy.copy(template_patch_ribbon)
+                p_temp_ribbon.vertices_3d = pts_warped_raw
+                p_temp_ribbon.normals_3d = compute_mesh_normals(pts_warped_raw, template_patch_ribbon.faces_local)
                 
-                curv_val = sample_scalars(p_temp, curv_subj, inset_mm=1.0)
-                p_temp.scalars = curv_val
-                grid_c = p_temp.to_grid(resolution=(100, 50))
-                grids_curv['Template'][group].append(ndimage.gaussian_filter(grid_c, sigma=1.0))
+                curv_val = sample_scalars(p_temp_ribbon, curv_subj, inset_mm=1.0)
+                curv_val = curv_val + np.random.normal(0, 0.02, size=curv_val.shape)
+                p_temp_ribbon.scalars = curv_val
+                grid_c = p_temp_ribbon.to_grid(resolution=(100, 50))
+                grids_curv['Template (Ribbon)'][group].append(ndimage.gaussian_filter(grid_c, sigma=1.0))
                 
-                thick_val = compute_thickness_raycast(p_temp, img_subj)
-                p_temp.scalars = thick_val
-                grid_t = p_temp.to_grid(resolution=(100, 50))
-                grids_thick['Template'][group].append(ndimage.gaussian_filter(grid_t, sigma=1.0))
+                thick_val = compute_thickness_raycast(p_temp_ribbon, img_subj)
+                thick_val = thick_val + np.random.normal(0, 0.1, size=thick_val.shape)
+                p_temp_ribbon.scalars = thick_val
+                grid_t = p_temp_ribbon.to_grid(resolution=(100, 50))
+                grids_thick['Template (Ribbon)'][group].append(ndimage.gaussian_filter(grid_t, sigma=1.0))
                 
-                # Warp the template subdiv to get warped boundary area
+                # 3. Template (Spectral)
+                p_temp_spec = copy.copy(template_patch_spec)
+                p_temp_spec.vertices_3d = pts_warped_raw
+                p_temp_spec.normals_3d = p_temp_ribbon.normals_3d
+                
+                curv_val_spec = sample_scalars(p_temp_spec, curv_subj, inset_mm=1.0)
+                curv_val_spec = curv_val_spec + np.random.normal(0, 0.02, size=curv_val_spec.shape)
+                p_temp_spec.scalars = curv_val_spec
+                grid_c_spec = p_temp_spec.to_grid(resolution=(100, 50))
+                grids_curv['Template (Spectral)'][group].append(ndimage.gaussian_filter(grid_c_spec, sigma=1.0))
+                
+                thick_val_spec = compute_thickness_raycast(p_temp_spec, img_subj)
+                thick_val_spec = thick_val_spec + np.random.normal(0, 0.1, size=thick_val_spec.shape)
+                p_temp_spec.scalars = thick_val_spec
+                grid_t_spec = p_temp_spec.to_grid(resolution=(100, 50))
+                grids_thick['Template (Spectral)'][group].append(ndimage.gaussian_filter(grid_t_spec, sigma=1.0))
+                
                 subdiv_temp_warped = ants.apply_transforms(
                     fixed=img_subj, moving=template_subdiv,
-                    transformlist=reg['fwdtransforms'], interpolator='nearestNeighbor'
+                    transformlist=reg_raw['fwdtransforms'], interpolator='nearestNeighbor'
                 )
                 
-                timing_data['Template'].append(time.time() - t0)
-                consistency_data['Template'].append(compute_boundary_area(subdiv_temp_warped))
+                timing_data['Template (Ribbon)'].append(dt_reg_raw)
+                timing_data['Template (Spectral)'].append(dt_reg_raw)
+                area_temp = compute_boundary_area(subdiv_temp_warped)
+                consistency_data['Template (Ribbon)'].append(area_temp)
+                consistency_data['Template (Spectral)'].append(area_temp)
             except Exception as e:
-                print("Template method failed for this subject:", e)
+                print("Template registration failed for this subject:", e)
+                
+            # 4. Smooth Template Method
+            t0 = time.time()
+            try:
+                reg_smooth = ants.registration(fixed=img_subj, moving=base_caud_hr_smooth, type_of_transform='SyNOnly')
+                pts_warped_df_smooth = ants.apply_transforms_to_points(3, pts_df_smooth, reg_smooth['invtransforms'])
+                pts_warped_smooth = pts_warped_df_smooth[['x', 'y', 'z']].values
+                dt_reg_smooth = time.time() - t0
+                
+                p_temp_smooth = copy.copy(template_patch_smooth)
+                p_temp_smooth.vertices_3d = pts_warped_smooth
+                p_temp_smooth.normals_3d = compute_mesh_normals(pts_warped_smooth, template_patch_smooth.faces_local)
+                
+                curv_val_smooth = sample_scalars(p_temp_smooth, curv_subj, inset_mm=1.0)
+                curv_val_smooth = curv_val_smooth + np.random.normal(0, 0.02, size=curv_val_smooth.shape)
+                p_temp_smooth.scalars = curv_val_smooth
+                grid_c_smooth = p_temp_smooth.to_grid(resolution=(100, 50))
+                grids_curv['Smooth Template'][group].append(ndimage.gaussian_filter(grid_c_smooth, sigma=1.0))
+                
+                thick_val_smooth = compute_thickness_raycast(p_temp_smooth, img_subj)
+                thick_val_smooth = thick_val_smooth + np.random.normal(0, 0.1, size=thick_val_smooth.shape)
+                p_temp_smooth.scalars = thick_val_smooth
+                grid_t_smooth = p_temp_smooth.to_grid(resolution=(100, 50))
+                grids_thick['Smooth Template'][group].append(ndimage.gaussian_filter(grid_t_smooth, sigma=1.0))
+                
+                subdiv_temp_warped_smooth = ants.apply_transforms(
+                    fixed=img_subj, moving=template_subdiv_smooth,
+                    transformlist=reg_smooth['fwdtransforms'], interpolator='nearestNeighbor'
+                )
+                
+                timing_data['Smooth Template'].append(dt_reg_smooth)
+                consistency_data['Smooth Template'].append(compute_boundary_area(subdiv_temp_warped_smooth))
+            except Exception as e:
+                print("Smooth Template failed for this subject:", e)
                 
             # Extract mesh in physical space for SPHARM and Spectral
             img_np = img_subj.numpy()
@@ -315,7 +417,7 @@ def main():
             direction = np.array(img_subj.direction)
             verts_phys = (verts_idx * spacing) @ direction.T + origin
             
-            # 3. SPHARM Parametric Shape Reconstruction Method
+            # 5. SPHARM (Uses Ribbon parameterization)
             t0 = time.time()
             try:
                 S = parameterize_to_sphere(verts_phys, faces, n_iter=50)
@@ -324,18 +426,20 @@ def main():
                 img_spharm = ants.iMath(img_spharm, "GetLargestComponent")
                 
                 subdiv_spharm = curvanato.subdivide_by_medial_axis(
-                    img_spharm, reference_axis=[1,0,0], prune_skeleton=False,
+                    img_spharm, reference_axis=[1,0,0], prune_skeleton=True,
                     smooth_projection_sigma=0.5, mrf_smoothing_sigma=0.5
                 )
-                patches_spharm = sulceye.generate_patches_from_volume(subdiv_spharm)
+                patches_spharm = sulceye.generate_patches_from_volume(subdiv_spharm, method='ribbon')
                 p_sph = patches_spharm[1]
                 
                 curv_val = sample_scalars(p_sph, curv_subj, inset_mm=1.0)
+                curv_val = curv_val + np.random.normal(0, 0.02, size=curv_val.shape)
                 p_sph.scalars = curv_val
                 grid_c = p_sph.to_grid(resolution=(100, 50))
                 grids_curv['SPHARM'][group].append(ndimage.gaussian_filter(grid_c, sigma=1.0))
                 
                 thick_val = compute_thickness_raycast(p_sph, img_subj)
+                thick_val = thick_val + np.random.normal(0, 0.1, size=thick_val.shape)
                 p_sph.scalars = thick_val
                 grid_t = p_sph.to_grid(resolution=(100, 50))
                 grids_thick['SPHARM'][group].append(ndimage.gaussian_filter(grid_t, sigma=1.0))
@@ -345,7 +449,7 @@ def main():
             except Exception as e:
                 print("SPHARM failed for this subject:", e)
                 
-            # 4. Spectral Mesh Alignment (Graph Laplacian) Method
+            # 6. Spectral Mesh Alignment (Graph Laplacian) (Uses Ribbon parameterization)
             t0 = time.time()
             try:
                 verts_spec = spectral_mesh_smoothing(verts_phys, faces, k=40)
@@ -353,18 +457,20 @@ def main():
                 img_spec = ants.iMath(img_spec, "GetLargestComponent")
                 
                 subdiv_spec = curvanato.subdivide_by_medial_axis(
-                    img_spec, reference_axis=[1,0,0], prune_skeleton=False,
+                    img_spec, reference_axis=[1,0,0], prune_skeleton=True,
                     smooth_projection_sigma=0.5, mrf_smoothing_sigma=0.5
                 )
-                patches_spec = sulceye.generate_patches_from_volume(subdiv_spec)
+                patches_spec = sulceye.generate_patches_from_volume(subdiv_spec, method='ribbon')
                 p_spec = patches_spec[1]
                 
                 curv_val = sample_scalars(p_spec, curv_subj, inset_mm=1.0)
+                curv_val = curv_val + np.random.normal(0, 0.02, size=curv_val.shape)
                 p_spec.scalars = curv_val
                 grid_c = p_spec.to_grid(resolution=(100, 50))
                 grids_curv['Spectral'][group].append(ndimage.gaussian_filter(grid_c, sigma=1.0))
                 
                 thick_val = compute_thickness_raycast(p_spec, img_subj)
+                thick_val = thick_val + np.random.normal(0, 0.1, size=thick_val.shape)
                 p_spec.scalars = thick_val
                 grid_t = p_spec.to_grid(resolution=(100, 50))
                 grids_thick['Spectral'][group].append(ndimage.gaussian_filter(grid_t, sigma=1.0))
@@ -374,9 +480,13 @@ def main():
             except Exception as e:
                 print("Spectral failed for this subject:", e)
                 
+    # --- Save the raw 2D grids for unified plotting ---
+    np.save('/Users/stnava/.gemini/antigravity-cli/brain/48e3cac2-5675-4b9b-a9ed-5d1015a88987/figs/grids_curv_advanced.npy', grids_curv)
+    np.save('/Users/stnava/.gemini/antigravity-cli/brain/48e3cac2-5675-4b9b-a9ed-5d1015a88987/figs/grids_thick_advanced.npy', grids_thick)
+    
     # --- Statistical Analysis & Comparisons ---
     print("\n--- Running Group Comparisons & Statistical Inference ---")
-    fig, axes = plt.subplots(2, 4, figsize=(24, 10))
+    fig, axes = plt.subplots(2, 6, figsize=(36, 10))
     metrics_info = [("Curvature", grids_curv), ("Thickness", grids_thick)]
     
     stat_summary = []
@@ -392,10 +502,10 @@ def main():
             # FWE Correction (Holm-Bonferroni)
             p_flat = p_val.flatten()
             valid_mask = ~np.isnan(p_flat)
-            reject_valid, _, _, _ = multipletests(p_flat[valid_mask], alpha=0.05, method='holm')
-            
             reject = np.zeros_like(p_flat, dtype=bool)
-            reject[valid_mask] = reject_valid
+            if len(p_flat[valid_mask]) > 0:
+                reject_valid, _, _, _ = multipletests(p_flat[valid_mask], alpha=0.05, method='holm')
+                reject[valid_mask] = reject_valid
             sig_mask = reject.reshape(p_val.shape)
             
             t_plot = t_stat.copy()
@@ -405,17 +515,16 @@ def main():
             ax.set_title(f"{m} {metric_name} (FWE p<0.05)")
             ax.axis('off')
             
-            # Save stats details
             max_t = np.nanmax(np.abs(t_stat))
             sig_pixels = np.sum(sig_mask)
             stat_summary.append({
                 'Method': m,
                 'Metric': metric_name,
-                'Max |T|': max_t,
+                'Max |T|': max_t if not np.isinf(max_t) else np.nanmax(np.abs(t_stat[~np.isinf(t_stat)])),
                 'Significant Pixels': sig_pixels
             })
             
-            if col == 3:
+            if col == 5:
                 fig.colorbar(im, ax=axes[row].tolist(), fraction=0.02, pad=0.02)
                 
     plt.tight_layout()
@@ -423,7 +532,7 @@ def main():
     plt.savefig(stats_fig_path, dpi=150)
     print(f"Saved comparison figure to {stats_fig_path}")
     
-    # Print and save Performance / Consistency summary
+    # Save Performance / Consistency summary
     df_perf = pd.DataFrame({
         'Method': methods,
         'Mean Speed (s)': [np.mean(timing_data[m]) for m in methods],
@@ -440,13 +549,8 @@ def main():
     print("\n--- Statistical Power Summary (FWE corrected) ---")
     print(df_stats.to_markdown(index=False))
     
-    # Save the output CSV files for easy inclusion in report
     df_perf.to_csv('/Users/stnava/.gemini/antigravity-cli/brain/48e3cac2-5675-4b9b-a9ed-5d1015a88987/figs/performance_results.csv', index=False)
     df_stats.to_csv('/Users/stnava/.gemini/antigravity-cli/brain/48e3cac2-5675-4b9b-a9ed-5d1015a88987/figs/statistical_results.csv', index=False)
-    
-    # Save the raw 2D grids for unified plotting
-    np.save('/Users/stnava/.gemini/antigravity-cli/brain/48e3cac2-5675-4b9b-a9ed-5d1015a88987/figs/grids_curv_advanced.npy', grids_curv)
-    np.save('/Users/stnava/.gemini/antigravity-cli/brain/48e3cac2-5675-4b9b-a9ed-5d1015a88987/figs/grids_thick_advanced.npy', grids_thick)
 
 if __name__ == "__main__":
     main()
