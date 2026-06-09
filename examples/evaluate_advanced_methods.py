@@ -190,11 +190,8 @@ def main():
     base_caud = ants.threshold_image(caud_vent, 50, 50)
     base_caud = ants.crop_image(base_caud, ants.iMath(base_caud, "MD", 10))
     
-    import siq
-    print("Super-Resolution (SIQ)...")
-    base_caud_hr = siq.auto(base_caud)
-    base_caud_hr = ants.threshold_image(base_caud_hr, 0.5, 1.5).threshold_image(1, 1)
-    base_caud_hr = ants.iMath(base_caud_hr, "GetLargestComponent")
+    print("Skipping Super-Resolution, using cropped base caudate template directly...")
+    base_caud_hr = base_caud
     
     print("Generating template subdiv & baseline distance map...")
     dist = ants.iMath(base_caud_hr, "MaurerDistance")
@@ -239,7 +236,7 @@ def main():
                 bias = np.zeros_like(base_caud_hr.numpy())
                 medial_mask = (template_subdiv.numpy() == 1)
                 y_coords = np.indices(base_caud_hr.shape)[1]
-                lesion_mask = medial_mask & (y_coords > 73)
+                lesion_mask = medial_mask & (y_coords > 36)
                 bias[lesion_mask] = -1.5
                 dist_map = dist_map + base_caud_hr.new_image_like(bias)
                 
