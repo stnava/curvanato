@@ -1799,12 +1799,15 @@ def subdivide_by_medial_axis(binary_image, reference_axis=[1, 0, 0],
             centered = skel_phys_sample - skel_phys_sample.mean(axis=0)
             pca_axis = np.linalg.svd(centered, full_matrices=False)[2][0]
             projs = np.dot(centered, pca_axis)
-            start_node = np.argmin(projs)
-            end_node = np.argmax(projs)
+            
+            nodes_in_g = list(G.nodes)
+            projs_g = projs[nodes_in_g]
+            start_node = nodes_in_g[np.argmin(projs_g)]
+            end_node = nodes_in_g[np.argmax(projs_g)]
             try:
                 path = nx.shortest_path(G, source=start_node, target=end_node, weight='weight')
                 skel_phys = skel_phys_sample[path]
-            except nx.NetworkXNoPath:
+            except (nx.NetworkXNoPath, nx.NodeNotFound):
                 pass
     
     tree = cKDTree(skel_phys)
