@@ -1746,10 +1746,18 @@ def auto_subdivide_left_right_anatomy2(
 
     return best_anat1partitioned, best_anat2partitioned, best_axis
 
-def subdivide_by_medial_axis(binary_image, reference_axis=[1, 0, 0]):
+def subdivide_by_medial_axis(binary_image, reference_axis=[1, 0, 0], 
+                             prune_skeleton=False, 
+                             smooth_projection_sigma=0.0, 
+                             mrf_smoothing_sigma=0.0):
     """
     Subdivides a binary image into two halves along its medial axis 
     (skeleton) using a reference axis to define 'left' and 'right'.
+    
+    Regularization Parameters:
+    - prune_skeleton: Extracts the single longest continuous path through the skeleton to ignore micro-branches.
+    - smooth_projection_sigma: Smooths the scalar projection field in 3D before thresholding.
+    - mrf_smoothing_sigma: Softens the resulting binary labels by smoothing their spatial probabilities and taking the argmax.
     """
     import numpy as np
     import ants
@@ -1772,6 +1780,33 @@ def subdivide_by_medial_axis(binary_image, reference_axis=[1, 0, 0]):
     skel_phys = to_physical(skel_coords)
     obj_phys = to_physical(obj_coords)
     
+    # 1. Skeleton Pruning (Graph Shortest Path)
+    if prune_skeleton:
+        import networkx as nx
+        # Sub-sample for speed if very large
+        step = max(1, len(skel_coords) // 1000)
+        skel_phys_sample = skel_phys[::step]
+        
+        G = nx.Graph()
+        tree_skel = cKDTree(skel_phys_sample)
+        pairs = tree_skel.query_pairs(r=np.max(spacing) * 4) 
+        for (i, j) in pairs:
+            dist = np.linalg.norm(skel_phys_sample[i] - skel_phys_sample[j])
+            G.add_edge(i, j, weight=dist)
+            
+        if len(G.nodes) > 0:
+            # PCA to find extreme endpoints
+            centered = skel_phys_sample - skel_phys_sample.mean(axis=0)
+            pca_axis = np.linalg.svd(centered, full_matrices=False)[2][0]
+            projs = np.dot(centered, pca_axis)
+            start_node = np.argmin(projs)
+            end_node = np.argmax(projs)
+            try:
+                path = nx.shortest_path(G, source=start_node, target=end_node, weight='weight')
+                skel_phys = skel_phys_sample[path]
+            except nx.NetworkXNoPath:
+                pass
+    
     tree = cKDTree(skel_phys)
     _, indices = tree.query(obj_phys)
     closest_skel_phys = skel_phys[indices]
@@ -1784,10 +1819,36 @@ def subdivide_by_medial_axis(binary_image, reference_axis=[1, 0, 0]):
     
     projections = np.dot(vectors, ref_axis)
     
-    out_numpy = np.zeros_like(binary_image.numpy())
+    # 2. Implicit Field Smoothing
+    if smooth_projection_sigma > 0:
+        proj_img_np = np.zeros_like(binary_image.numpy(), dtype=float)
+        proj_img_np[tuple(obj_coords.T)] = projections
+        proj_img = ants.copy_image_info(binary_image, ants.from_numpy(proj_img_np))
+        proj_img_smoothed = ants.smooth_image(proj_img, smooth_projection_sigma)
+        projections = proj_img_smoothed.numpy()[tuple(obj_coords.T)]
+    
     pos_mask = projections > 0
     neg_mask = projections <= 0
     
+    # 3. Post-Process Spatial MRF Smoothing
+    if mrf_smoothing_sigma > 0:
+        out_shape = binary_image.numpy().shape
+        
+        m1_np = np.zeros(out_shape, dtype=float)
+        m1_np[tuple(obj_coords[pos_mask].T)] = 1.0
+        m1 = ants.smooth_image(ants.copy_image_info(binary_image, ants.from_numpy(m1_np)), mrf_smoothing_sigma)
+        
+        m2_np = np.zeros(out_shape, dtype=float)
+        m2_np[tuple(obj_coords[neg_mask].T)] = 1.0
+        m2 = ants.smooth_image(ants.copy_image_info(binary_image, ants.from_numpy(m2_np)), mrf_smoothing_sigma)
+        
+        prob1 = m1.numpy()[tuple(obj_coords.T)]
+        prob2 = m2.numpy()[tuple(obj_coords.T)]
+        
+        pos_mask = prob1 > prob2
+        neg_mask = prob1 <= prob2
+        
+    out_numpy = np.zeros_like(binary_image.numpy())
     out_numpy[tuple(obj_coords[pos_mask].T)] = 1
     out_numpy[tuple(obj_coords[neg_mask].T)] = 2
     

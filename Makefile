@@ -1,7 +1,7 @@
 .PHONY: install clean test docs pop
 
 install:
-	python3 -m pip install -e .
+	python -m pip install -e .
 
 clean:
 	rm -rf build/ curvanato.egg-info/ dist/ .pytest_cache/ __pycache__/
@@ -10,7 +10,7 @@ clean:
 	rm -f ex_control.png ex_disease.png boxplot.png population_report.html
 
 test:
-	python3 -m pytest -v -s --cov=curvanato --cov-report=term-missing tests/
+	python -m pytest -v -s --cov=curvanato --cov-report=term-missing tests/
 
 docs:
 	@echo "Documentation generation not fully configured."
@@ -18,4 +18,4 @@ docs:
 
 pop:
 	@echo "Running the synthetic population study..."
-	python3 examples/population_study.py
+	python3 examples/caudate_report.py

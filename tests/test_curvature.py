@@ -5,7 +5,7 @@ import ants
 import antspynet
 import curvanato
 
-def test_compute_curvature(radius, smoo=1.0, distmap=False ):
+def compute_curvature_helper(radius, smoo=1.0, distmap=False ):
     dim = (radius*2+5, radius*2+5, radius*2+5)
     center = (radius+2,radius+2,radius+2)
     spherical_volume = curvanato.create_spherical_volume(dim, radius, center)   
@@ -35,7 +35,7 @@ def test_compute_curvature(radius, smoo=1.0, distmap=False ):
     # assert np.all(result == 0)
 
 
-def test_gauss_bump_curvature(
+def gauss_bump_curvature_helper(
     dim = (100, 100, 100),
     centers = [(50, 50, 50), (70, 70, 30), (30, 30, 70)],
     sigma = 10,
@@ -60,8 +60,8 @@ rlist.append( 80 )
 # Iterate over the radii
 for r in rlist:
     print(f"Processing radius: {r}")
-    truek, meank, k1, k2 = test_compute_curvature(r, distmap=False)
-    truekd, meankd, k1d, k2d = test_compute_curvature(r, distmap=True)
+    truek, meank, k1, k2 = compute_curvature_helper(r, distmap=False)
+    truekd, meankd, k1d, k2d = compute_curvature_helper(r, distmap=True)
     
     # Append the results to the list as a dictionary
     results.append({
