@@ -384,6 +384,17 @@ def main():
                 p_temp_arap.vertices_3d = pts_warped_raw
                 p_temp_arap.normals_3d = p_temp_ribbon.normals_3d
                 
+                # Target-Conformed ARAP (TC-ARAP) solver conformed to Template flat-map
+                from sulceye.parametric import transform_to_arap
+                coords_tc_arap = transform_to_arap(
+                    p_temp_arap.vertices_3d,
+                    p_temp_arap.faces_local,
+                    target_coords_2d=template_patch_arap.vertices_2d,
+                    beta=0.2
+                )
+                p_temp_arap.vertices_2d = coords_tc_arap
+                p_temp_arap.vertices_2d -= np.mean(p_temp_arap.vertices_2d, axis=0) # ensure centered
+                
                 curv_val_arap = sample_scalars(p_temp_arap, curv_subj, inset_mm=1.0)
                 curv_val_arap = curv_val_arap + np.random.normal(0, 0.02, size=curv_val_arap.shape)
                 p_temp_arap.scalars = curv_val_arap
