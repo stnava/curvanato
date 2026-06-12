@@ -213,13 +213,16 @@ def main():
         smooth_projection_sigma=0.5, mrf_smoothing_sigma=0.5
     )
     
-    # Generate both Ribbon (prior) and Spectral (new) template patches
+    # Generate Ribbon (prior), Spectral (new) and ARAP template patches
     print("Extracting template patches...")
     template_patches_ribbon = sulceye.generate_patches_from_volume(template_subdiv, method='ribbon')
     template_patch_ribbon = template_patches_ribbon[1]
     
     template_patches_spec = sulceye.generate_patches_from_volume(template_subdiv, method='spectral')
     template_patch_spec = template_patches_spec[1]
+    
+    template_patches_arap = sulceye.generate_patches_from_volume(template_subdiv, method='arap')
+    template_patch_arap = template_patches_arap[1]
     
     # Generate Smooth Template
     print("Extracting Template boundary and smoothing...")
@@ -256,7 +259,7 @@ def main():
         'z': template_patch_smooth.vertices_3d[:, 2]
     })
     
-    methods = ['Baseline', 'SPHARM', 'Spectral', 'Template (Ribbon)', 'Template (Spectral)', 'Smooth Template']
+    methods = ['Baseline', 'SPHARM', 'Spectral', 'Template (Ribbon)', 'Template (Spectral)', 'Smooth Template', 'Template (ARAP)']
     
     # Setup results storage
     grids_curv = {m: {'Control': [], 'Disease': []} for m in methods}
@@ -362,6 +365,23 @@ def main():
                 grid_t_spec = p_temp_spec.to_grid(resolution=(100, 50))
                 grids_thick['Template (Spectral)'][group].append(ndimage.gaussian_filter(grid_t_spec, sigma=1.0))
                 
+                # Template (ARAP)
+                p_temp_arap = copy.copy(template_patch_arap)
+                p_temp_arap.vertices_3d = pts_warped_raw
+                p_temp_arap.normals_3d = p_temp_ribbon.normals_3d
+                
+                curv_val_arap = sample_scalars(p_temp_arap, curv_subj, inset_mm=1.0)
+                curv_val_arap = curv_val_arap + np.random.normal(0, 0.02, size=curv_val_arap.shape)
+                p_temp_arap.scalars = curv_val_arap
+                grid_c_arap = p_temp_arap.to_grid(resolution=(100, 50))
+                grids_curv['Template (ARAP)'][group].append(ndimage.gaussian_filter(grid_c_arap, sigma=1.0))
+                
+                thick_val_arap = compute_thickness_raycast(p_temp_arap, img_subj)
+                thick_val_arap = thick_val_arap + np.random.normal(0, 0.1, size=thick_val_arap.shape)
+                p_temp_arap.scalars = thick_val_arap
+                grid_t_arap = p_temp_arap.to_grid(resolution=(100, 50))
+                grids_thick['Template (ARAP)'][group].append(ndimage.gaussian_filter(grid_t_arap, sigma=1.0))
+                
                 subdiv_temp_warped = ants.apply_transforms(
                     fixed=img_subj, moving=template_subdiv,
                     transformlist=reg_raw['fwdtransforms'], interpolator='nearestNeighbor'
@@ -369,9 +389,11 @@ def main():
                 
                 timing_data['Template (Ribbon)'].append(dt_reg_raw)
                 timing_data['Template (Spectral)'].append(dt_reg_raw)
+                timing_data['Template (ARAP)'].append(dt_reg_raw)
                 area_temp = compute_boundary_area(subdiv_temp_warped)
                 consistency_data['Template (Ribbon)'].append(area_temp)
                 consistency_data['Template (Spectral)'].append(area_temp)
+                consistency_data['Template (ARAP)'].append(area_temp)
             except Exception as e:
                 print("Template registration failed for this subject:", e)
                 
@@ -486,7 +508,7 @@ def main():
     
     # --- Statistical Analysis & Comparisons ---
     print("\n--- Running Group Comparisons & Statistical Inference ---")
-    fig, axes = plt.subplots(2, 6, figsize=(36, 10))
+    fig, axes = plt.subplots(2, 7, figsize=(42, 10))
     metrics_info = [("Curvature", grids_curv), ("Thickness", grids_thick)]
     
     stat_summary = []
@@ -524,7 +546,7 @@ def main():
                 'Significant Pixels': sig_pixels
             })
             
-            if col == 5:
+            if col == 6:
                 fig.colorbar(im, ax=axes[row].tolist(), fraction=0.02, pad=0.02)
                 
     plt.tight_layout()
