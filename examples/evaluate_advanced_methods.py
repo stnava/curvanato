@@ -23,6 +23,20 @@ import copy
 # Suppress deprecation warnings from scipy sph_harm
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
+def smooth_image_with_nans(image, sigma=1.0):
+    nan_mask = np.isnan(image)
+    im = image.copy()
+    im[nan_mask] = 0.0
+    w = (~nan_mask).astype(float)
+    
+    im_smooth = ndimage.gaussian_filter(im, sigma=sigma)
+    w_smooth = ndimage.gaussian_filter(w, sigma=sigma)
+    
+    w_smooth[w_smooth == 0] = 1e-8
+    result = im_smooth / w_smooth
+    result[nan_mask] = np.nan
+    return result
+
 def compute_mesh_normals(vertices, faces):
     normals = np.zeros_like(vertices)
     v0 = vertices[faces[:, 0]]
@@ -310,13 +324,13 @@ def main():
                 curv_val = curv_val + np.random.normal(0, 0.02, size=curv_val.shape)
                 p_base.scalars = curv_val
                 grid_c = p_base.to_grid(resolution=(100, 50))
-                grids_curv['Baseline'][group].append(ndimage.gaussian_filter(grid_c, sigma=1.0))
+                grids_curv['Baseline'][group].append(smooth_image_with_nans(grid_c, sigma=1.0))
                 
                 thick_val = compute_thickness_raycast(p_base, img_subj)
                 thick_val = thick_val + np.random.normal(0, 0.1, size=thick_val.shape)
                 p_base.scalars = thick_val
                 grid_t = p_base.to_grid(resolution=(100, 50))
-                grids_thick['Baseline'][group].append(ndimage.gaussian_filter(grid_t, sigma=1.0))
+                grids_thick['Baseline'][group].append(smooth_image_with_nans(grid_t, sigma=1.0))
                 
                 timing_data['Baseline'].append(time.time() - t0)
                 consistency_data['Baseline'].append(compute_boundary_area(subdiv_base))
@@ -340,13 +354,13 @@ def main():
                 curv_val = curv_val + np.random.normal(0, 0.02, size=curv_val.shape)
                 p_temp_ribbon.scalars = curv_val
                 grid_c = p_temp_ribbon.to_grid(resolution=(100, 50))
-                grids_curv['Template (Ribbon)'][group].append(ndimage.gaussian_filter(grid_c, sigma=1.0))
+                grids_curv['Template (Ribbon)'][group].append(smooth_image_with_nans(grid_c, sigma=1.0))
                 
                 thick_val = compute_thickness_raycast(p_temp_ribbon, img_subj)
                 thick_val = thick_val + np.random.normal(0, 0.1, size=thick_val.shape)
                 p_temp_ribbon.scalars = thick_val
                 grid_t = p_temp_ribbon.to_grid(resolution=(100, 50))
-                grids_thick['Template (Ribbon)'][group].append(ndimage.gaussian_filter(grid_t, sigma=1.0))
+                grids_thick['Template (Ribbon)'][group].append(smooth_image_with_nans(grid_t, sigma=1.0))
                 
                 # 3. Template (Spectral)
                 p_temp_spec = copy.copy(template_patch_spec)
@@ -357,13 +371,13 @@ def main():
                 curv_val_spec = curv_val_spec + np.random.normal(0, 0.02, size=curv_val_spec.shape)
                 p_temp_spec.scalars = curv_val_spec
                 grid_c_spec = p_temp_spec.to_grid(resolution=(100, 50))
-                grids_curv['Template (Spectral)'][group].append(ndimage.gaussian_filter(grid_c_spec, sigma=1.0))
+                grids_curv['Template (Spectral)'][group].append(smooth_image_with_nans(grid_c_spec, sigma=1.0))
                 
                 thick_val_spec = compute_thickness_raycast(p_temp_spec, img_subj)
                 thick_val_spec = thick_val_spec + np.random.normal(0, 0.1, size=thick_val_spec.shape)
                 p_temp_spec.scalars = thick_val_spec
                 grid_t_spec = p_temp_spec.to_grid(resolution=(100, 50))
-                grids_thick['Template (Spectral)'][group].append(ndimage.gaussian_filter(grid_t_spec, sigma=1.0))
+                grids_thick['Template (Spectral)'][group].append(smooth_image_with_nans(grid_t_spec, sigma=1.0))
                 
                 # Template (ARAP)
                 p_temp_arap = copy.copy(template_patch_arap)
@@ -374,13 +388,13 @@ def main():
                 curv_val_arap = curv_val_arap + np.random.normal(0, 0.02, size=curv_val_arap.shape)
                 p_temp_arap.scalars = curv_val_arap
                 grid_c_arap = p_temp_arap.to_grid(resolution=(100, 50))
-                grids_curv['Template (ARAP)'][group].append(ndimage.gaussian_filter(grid_c_arap, sigma=1.0))
+                grids_curv['Template (ARAP)'][group].append(smooth_image_with_nans(grid_c_arap, sigma=1.0))
                 
                 thick_val_arap = compute_thickness_raycast(p_temp_arap, img_subj)
                 thick_val_arap = thick_val_arap + np.random.normal(0, 0.1, size=thick_val_arap.shape)
                 p_temp_arap.scalars = thick_val_arap
                 grid_t_arap = p_temp_arap.to_grid(resolution=(100, 50))
-                grids_thick['Template (ARAP)'][group].append(ndimage.gaussian_filter(grid_t_arap, sigma=1.0))
+                grids_thick['Template (ARAP)'][group].append(smooth_image_with_nans(grid_t_arap, sigma=1.0))
                 
                 subdiv_temp_warped = ants.apply_transforms(
                     fixed=img_subj, moving=template_subdiv,
@@ -413,13 +427,13 @@ def main():
                 curv_val_smooth = curv_val_smooth + np.random.normal(0, 0.02, size=curv_val_smooth.shape)
                 p_temp_smooth.scalars = curv_val_smooth
                 grid_c_smooth = p_temp_smooth.to_grid(resolution=(100, 50))
-                grids_curv['Smooth Template'][group].append(ndimage.gaussian_filter(grid_c_smooth, sigma=1.0))
+                grids_curv['Smooth Template'][group].append(smooth_image_with_nans(grid_c_smooth, sigma=1.0))
                 
                 thick_val_smooth = compute_thickness_raycast(p_temp_smooth, img_subj)
                 thick_val_smooth = thick_val_smooth + np.random.normal(0, 0.1, size=thick_val_smooth.shape)
                 p_temp_smooth.scalars = thick_val_smooth
                 grid_t_smooth = p_temp_smooth.to_grid(resolution=(100, 50))
-                grids_thick['Smooth Template'][group].append(ndimage.gaussian_filter(grid_t_smooth, sigma=1.0))
+                grids_thick['Smooth Template'][group].append(smooth_image_with_nans(grid_t_smooth, sigma=1.0))
                 
                 subdiv_temp_warped_smooth = ants.apply_transforms(
                     fixed=img_subj, moving=template_subdiv_smooth,
@@ -458,13 +472,13 @@ def main():
                 curv_val = curv_val + np.random.normal(0, 0.02, size=curv_val.shape)
                 p_sph.scalars = curv_val
                 grid_c = p_sph.to_grid(resolution=(100, 50))
-                grids_curv['SPHARM'][group].append(ndimage.gaussian_filter(grid_c, sigma=1.0))
+                grids_curv['SPHARM'][group].append(smooth_image_with_nans(grid_c, sigma=1.0))
                 
                 thick_val = compute_thickness_raycast(p_sph, img_subj)
                 thick_val = thick_val + np.random.normal(0, 0.1, size=thick_val.shape)
                 p_sph.scalars = thick_val
                 grid_t = p_sph.to_grid(resolution=(100, 50))
-                grids_thick['SPHARM'][group].append(ndimage.gaussian_filter(grid_t, sigma=1.0))
+                grids_thick['SPHARM'][group].append(smooth_image_with_nans(grid_t, sigma=1.0))
                 
                 timing_data['SPHARM'].append(time.time() - t0)
                 consistency_data['SPHARM'].append(compute_boundary_area(subdiv_spharm))
@@ -489,13 +503,13 @@ def main():
                 curv_val = curv_val + np.random.normal(0, 0.02, size=curv_val.shape)
                 p_spec.scalars = curv_val
                 grid_c = p_spec.to_grid(resolution=(100, 50))
-                grids_curv['Spectral'][group].append(ndimage.gaussian_filter(grid_c, sigma=1.0))
+                grids_curv['Spectral'][group].append(smooth_image_with_nans(grid_c, sigma=1.0))
                 
                 thick_val = compute_thickness_raycast(p_spec, img_subj)
                 thick_val = thick_val + np.random.normal(0, 0.1, size=thick_val.shape)
                 p_spec.scalars = thick_val
                 grid_t = p_spec.to_grid(resolution=(100, 50))
-                grids_thick['Spectral'][group].append(ndimage.gaussian_filter(grid_t, sigma=1.0))
+                grids_thick['Spectral'][group].append(smooth_image_with_nans(grid_t, sigma=1.0))
                 
                 timing_data['Spectral'].append(time.time() - t0)
                 consistency_data['Spectral'].append(compute_boundary_area(subdiv_spec))
@@ -519,7 +533,7 @@ def main():
             ctrl = np.stack(grids_dict[m]['Control'])
             dis = np.stack(grids_dict[m]['Disease'])
             
-            t_stat, p_val = stats.ttest_ind(dis, ctrl, axis=0)
+            t_stat, p_val = stats.ttest_ind(dis, ctrl, axis=0, nan_policy='omit')
             
             # FWE Correction (Holm-Bonferroni)
             p_flat = p_val.flatten()
